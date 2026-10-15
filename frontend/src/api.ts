@@ -31,7 +31,9 @@ export class Vault {
     this.pendingEnvelope = null;
   }
 }
+let analysisRetryAt=0;
 export async function analyze(contexto: { registros:TradeDay[]; [key:string]:unknown }) {
+  if(Date.now()<analysisRetryAt)throw new Error(`Aguarde ${Math.ceil((analysisRetryAt-Date.now())/1000)} segundos antes de tentar novamente.`);
   const { data:sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) throw new Error('Entre novamente para realizar a análise.');
   const {data,error} = await supabase.functions.invoke('analyze-diary', { body:{contexto,consent:true} });
@@ -40,6 +42,9 @@ export async function analyze(contexto: { registros:TradeDay[]; [key:string]:unk
     if ('context' in error && error.context instanceof Response) {
       const body = await error.context.json().catch(()=>null);
       if (typeof body?.erro === 'string') message = body.erro;
+      if(error.context.status===429&&typeof body?.retryAfterSeconds==='number'&&Number.isFinite(body.retryAfterSeconds)&&body.retryAfterSeconds>0){
+        analysisRetryAt=Date.now()+Math.min(body.retryAfterSeconds,86400)*1000;
+      }
     }
     throw new Error(message);
   }

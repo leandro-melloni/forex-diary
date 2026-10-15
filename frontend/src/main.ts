@@ -1,7 +1,7 @@
 import './style.css';
 import { configured, supabase, readVault, writeVault, Vault, analyze } from './api';
 import { createVault, unlockVault, validateEnvelope } from './crypto';
-import { emptyDiary, validateDiary, importLegacy, metrics, opening, limits, validateStops, type Diary, type TradeDay } from '../../shared/domain';
+import { emptyDiary, validateDiary, importLegacy, metrics, forexSummary, opening, limits, validateStops, type Diary, type TradeDay } from '../../shared/domain';
 
 const root = document.querySelector<HTMLElement>('#app')!;
 let vault: Vault | null = null;
@@ -132,21 +132,27 @@ function diaryView(edit?:TradeDay){
     if(edit)d.dias=d.dias.map(i=>i.id===edit.id?item:i);else d.dias.push(item);
   }));
   if(edit){button('Cancelar',()=>{editingDay=undefined;render();},c);return;}
-  const filtersCard=card('Filtros Forex'),filters=node('div','','grid');filtersCard.append(filters);const filterBroker=brokers(filters,true),month=input('Mês','month','',filters);month.required=false;
-  const history=card('Resumo e histórico Forex'),area=node('div');history.append(area);
-  const refresh=()=>{area.replaceChildren();const selected=vault!.diary.dias.filter(i=>(!filterBroker.value||i.corretora===filterBroker.value)&&(!month.value||i.data.startsWith(month.value))).sort((a,b)=>b.data.localeCompare(a.data));const m=metrics(selected);
-    summaryCards([['Dias',String(m.dias)],['Operações',String(m.operacoes)],['Wins',String(m.wins)],['Losses',String(m.losses)],['Taxa de acerto',m.taxaAcerto===null?'—':`${m.taxaAcerto.toFixed(2)}%`],['Resultado líquido',money(m.resultadoLiquidoRegistrado),m.resultadoLiquidoRegistrado],['Média dia positivo',m.mediaDiaPositivo===null?'—':money(m.mediaDiaPositivo)],['Média dia negativo',m.mediaDiaNegativo===null?'—':money(m.mediaDiaNegativo)],['Queda dos resultados',money(m.drawdownResultadosUSD)]],area);
+  const filtersCard=card('Filtros Forex'),filters=node('div','','grid');filtersCard.append(filters);const filterBroker=brokers(filters,true),filterResult=select('Resultado do dia',[['','Todos'],['Win','Win'],['Loss','Loss'],['Zero','Zero a zero']],filters),month=input('Mês','month','',filters);month.required=false;
+  const summary=card('Resumo Forex'),summaryArea=node('div');summary.append(summaryArea);
+  const history=card('Histórico diário Forex'),area=node('div');history.append(area);
+  const refresh=()=>{area.replaceChildren();summaryArea.replaceChildren();const selected=vault!.diary.dias.filter(i=>(!filterBroker.value||i.corretora===filterBroker.value)&&(!filterResult.value||(i.resultadoFinanceiro>0?'Win':i.resultadoFinanceiro<0?'Loss':'Zero')===filterResult.value)&&(!month.value||i.data.startsWith(month.value))).sort((a,b)=>b.data.localeCompare(a.data));const m=forexSummary(vault!.diary,selected),hint=m.variasCorretoras?' (selecione uma corretora)':'';
+    const grid=summaryCards([
+      ['Dias lançados',String(m.diasLancados)],['Dias com lucro',String(m.diasWin),0],['Dias com prejuízo',String(m.diasLoss),-1],['Dias no zero',String(m.diasZero)],['Total de operações',String(m.operacoes)],['Taxa de acerto',`${m.taxaAcerto.toFixed(1)}%`],['Resultado financeiro (USD)',money(m.resultado),m.resultado],
+      [`Ganho/perda no filtro${hint}`,m.percentualAcumulado===null?'—':`${m.percentualAcumulado.toFixed(2)}%`,m.percentualAcumulado??0,'Resultado financeiro filtrado dividido pelo saldo antes do primeiro lançamento mais os depósitos até o último lançamento.'],
+      [`Média diária${hint}`,m.percentualMedio===null?'—':`${m.percentualMedio.toFixed(2)}%`,m.percentualMedio??0,'Média aritmética das porcentagens diárias: resultado filtrado de cada dia dividido pelo saldo de abertura desse dia. Considera apenas dias com lançamentos no filtro.']
+    ],summaryArea);grid.id='resumoForex';
     table(['Data','Corretora','Operações','Wins/Losses','Resultado','Observações','Ações'],selected.map(i=>{
       const actions=node('div','','actions');button('Editar',()=>{if(!busy){editingDay=i;render();}},actions);
       button('Excluir',()=>{if(confirm('Excluir este lançamento?'))void run(()=>change(d=>{d.dias=d.dias.filter(v=>v.id!==i.id);}));},actions);
       return [i.data,i.corretora,String(i.operacoes),`${i.wins}/${i.losses}`,node('span',money(i.resultadoFinanceiro),i.resultadoFinanceiro<0?'val-negativo':'val-positivo'),i.observacao,actions];
     }),area);
-  };filterBroker.addEventListener('change',refresh);month.addEventListener('change',refresh);button('Limpar filtros',()=>{filterBroker.value='';month.value='';refresh();},filters);refresh();
+  };filterBroker.addEventListener('change',refresh);filterResult.addEventListener('change',refresh);month.addEventListener('change',refresh);button('Limpar filtros',()=>{filterBroker.value='';filterResult.value='';month.value='';refresh();},filters);refresh();
 }
-function summaryCards(items:[string,string,number?][],parent:HTMLElement){
+function summaryCards(items:[string,string,number?,string?][],parent:HTMLElement){
   const grid=node('div','','resumo-grid');
-  for(const [label,value,amount] of items){const item=node('div','','resumo-item');item.append(node('span',label),node('strong',value,amount===undefined?'':amount<0?'val-negativo':'val-positivo'));grid.append(item);}
+  for(const [label,value,amount,title] of items){const item=node('div','','resumo-item');if(title)item.title=title;item.append(node('span',label),node('strong',value,amount===undefined?'':amount<0?'val-negativo':'val-positivo'));grid.append(item);}
   parent.append(grid);
+  return grid;
 }
 function movementView(){
   const c=card('Novo lançamento · Depósitos e Saques'),f=node('form','','grid');c.append(f);

@@ -10,8 +10,8 @@ Deno.serve(async (req: Request) => {
   const origin = req.headers.get('origin') || '';
   const allowed = (Deno.env.get('ALLOWED_ORIGINS') || '').split(',').map(v=>v.trim()).filter(Boolean);
   const headers = { 'Content-Type':'application/json', 'Cache-Control':'no-store', 'Vary':'Origin',
-    'Access-Control-Allow-Origin':origin, 'Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods':'POST, OPTIONS' };
-  const send = (status:number, data:unknown) => new Response(JSON.stringify(data),{status,headers});
+    'Access-Control-Allow-Origin':origin, 'Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods':'POST, OPTIONS', 'Access-Control-Expose-Headers':'Retry-After' };
+  const send = (status:number, data:unknown, extraHeaders:Record<string,string>={}) => new Response(JSON.stringify(data),{status,headers:{...headers,...extraHeaders}});
   if (!allowed.includes(origin)) return new Response('Origin denied',{status:403});
   if (req.method === 'OPTIONS') return new Response(null,{status:204,headers});
   if (req.method !== 'POST') return send(405,{erro:'Método não permitido.'});
@@ -42,8 +42,9 @@ Deno.serve(async (req: Request) => {
     catch { return send(400,{erro:'Dados do diário inválidos.'}); }
     if (body.consent !== true || !body.contexto.registros.length || body.contexto.registros.length>500) return send(400,{erro:'Confirme o envio de um recorte de 1 a 500 lançamentos.'});
     const {error:quota} = await client.rpc('reserve_ai_request');
-    if (quota?.code === '42501') return send(403,{erro:'Confirme seu segundo fator antes de solicitar a análise.'});
-    if (quota) return send(429,{erro:'Limite de análises atingido: até 3 por hora e 10 por dia. Tente depois.'});
+    if (quota?.code === '42501') return send(403,{erro:'Sessão sem permissão para analisar. Entre novamente e confira a configuração do backend.'});
+    if (quota?.code === 'P0001') return send(429,{erro:'Limite de análises atingido: até 3 por hora e 10 por dia. Tente depois.',codigo:'diary_rate_limit'});
+    if (quota) return send(503,{erro:'Não foi possível verificar o limite de análises. Tente novamente mais tarde.',codigo:'quota_unavailable'});
     const upstream = await fetch('https://api.openai.com/v1/responses', {
       method:'POST', headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},
       body:JSON.stringify({model:Deno.env.get('OPENAI_MODEL')||'gpt-5-mini', instructions,
@@ -52,7 +53,26 @@ Deno.serve(async (req: Request) => {
     });
     if (!upstream.ok) {
       const e = await upstream.json().catch(()=>({}));
-      return send(502,{erro:upstream.status === 429 ? e.error?.code === 'insufficient_quota' ? 'A conta da API OpenAI está sem cota. Confira o faturamento do projeto.' : 'A OpenAI atingiu um limite de uso. Aguarde e confira sua conta.' : 'A OpenAI recusou a solicitação. Confira chave e modelo no backend.'});
+      // Registra apenas diagnóstico técnico, sem chave, payload ou mensagem bruta do provedor.
+      console.warn(JSON.stringify({evento:'openai_error',status:upstream.status,requestId:upstream.headers.get('x-request-id')}));
+      if (upstream.status === 429) {
+        if (e?.error?.code === 'insufficient_quota' || e?.error?.type === 'insufficient_quota') {
+          return send(429,{erro:'A conta da API OpenAI está sem créditos ou atingiu o limite de gastos. Confira o faturamento e os limites do projeto OpenAI.',codigo:'openai_insufficient_quota'});
+        }
+        if (typeof e?.error?.message === 'string' && /request too large/i.test(e.error.message)) {
+          return send(429,{erro:'O recorte excede o limite de tokens disponível na OpenAI. Selecione menos lançamentos ou aumente os limites do projeto OpenAI.',codigo:'openai_request_too_large'});
+        }
+        const retry=upstream.headers.get('retry-after');
+        const delay=retry===null?NaN:/^\d+(\.\d+)?$/.test(retry)?Number(retry):(Date.parse(retry)-Date.now())/1000;
+        const seconds=Number.isFinite(delay)&&delay>0?Math.ceil(delay):null;
+        return send(429,{
+          erro:seconds?`A OpenAI atingiu um limite temporário de uso. Aguarde ${seconds} segundos antes de tentar novamente.`:'A OpenAI atingiu um limite de requisições ou tokens. Aguarde antes de tentar novamente; se persistir, confira os limites do projeto OpenAI ou selecione menos lançamentos.',
+          codigo:'openai_rate_limit',...(seconds?{retryAfterSeconds:seconds}:{})
+        },seconds?{'Retry-After':String(seconds)}:{});
+      }
+      if (upstream.status === 401 || upstream.status === 403) return send(503,{erro:'A chave da API OpenAI está inválida ou sem permissão. Confira a configuração no backend.',codigo:'openai_auth_error'});
+      if (upstream.status === 400 || upstream.status === 404) return send(503,{erro:'A OpenAI recusou o modelo ou os parâmetros configurados. Confira a configuração no backend.',codigo:'openai_configuration_error'});
+      return send(502,{erro:'A OpenAI está temporariamente indisponível. Tente novamente mais tarde.',codigo:'openai_unavailable'});
     }
     const result=await upstream.json();
     const texto=(result.output||[]).filter((i:{type:string})=>i.type==='message').flatMap((i:{content:unknown[]})=>i.content||[]).filter((i:{type:string})=>i.type==='output_text').map((i:{text:string})=>i.text).join('\n').trim();

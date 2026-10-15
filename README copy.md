@@ -71,6 +71,12 @@ O backup padrão da nova versão é criptografado. É possível importá-lo na m
 
 ## Validação
 
+### Limites da análise
+
+Erros 429 da OpenAI são retornados como 429, com mensagens distintas para limite temporário de requisições/tokens, falta de créditos/limite de gastos e recorte grande demais. Quando o provedor envia `Retry-After`, o frontend respeita o intervalo antes de permitir nova chamada. A função não repete chamadas automaticamente. Confira os limites do projeto OpenAI e selecione menos lançamentos se necessário. Isso é independente do limite do diário de 3 tentativas por hora e 10 por dia.
+
+Após alterar a função, publique com `supabase functions deploy analyze-diary` e publique o frontend atualizado. Os logs de erros da OpenAI incluem somente status HTTP e identificador da requisição; não incluem chave, dados do diário ou mensagem bruta do provedor.
+
 ```powershell
 npm.cmd run typecheck
 npm.cmd test

@@ -42,6 +42,40 @@ export function metrics(dias: TradeDay[]) {
   const mean = (a: number[]) => a.length ? a.reduce((s,n) => s+n,0)/a.length : null;
   return { lancamentos: dias.length, dias: grouped.size, operacoes: dias.reduce((s,i)=>s+i.operacoes,0), wins, losses, taxaAcerto: wins+losses ? 100*wins/(wins+losses) : null, resultadoLiquidoRegistrado: round(total), drawdownResultadosUSD: round(drawdown), maiorSequenciaDiasNegativos: maxSeq, mediaDiaPositivo: mean(values.filter(v=>v>0)), mediaDiaNegativo: mean(values.filter(v=>v<0)) };
 }
+// Reproduz o Resumo Forex do HTML legado, sem alterar as métricas da análise por IA.
+export function forexSummary(d: Diary, items: TradeDay[]) {
+  const order = new Map(d.dias.map((item,index)=>[item.id,index]));
+  const compare = (a:TradeDay,b:TradeDay) => a.data.localeCompare(b.data) ||
+    (Number.isFinite(Number(a.id))&&Number.isFinite(Number(b.id))?Number(a.id)-Number(b.id):(order.get(a.id)??0)-(order.get(b.id)??0));
+  const before = (item:TradeDay) => d.movimentos.filter(i=>i.corretora===item.corretora&&i.data<=item.data)
+    .reduce((sum,i)=>sum+(i.tipo==='Deposito'?i.valor:-i.valor),0)+
+    d.dias.filter(i=>i.corretora===item.corretora&&i.id!==item.id&&compare(i,item)<0).reduce((sum,i)=>sum+i.resultadoFinanceiro,0);
+  const wins=items.reduce((sum,i)=>sum+i.wins,0),losses=items.reduce((sum,i)=>sum+i.losses,0);
+  const resultado=items.reduce((sum,i)=>sum+i.resultadoFinanceiro,0);
+  const variasCorretoras=new Set(items.map(i=>i.corretora)).size>1;
+  let percentualAcumulado:number|null=0,percentualMedio:number|null=0;
+  if(variasCorretoras){percentualAcumulado=null;percentualMedio=null;}
+  else if(items.length){
+    const sorted=[...items].sort(compare),first=sorted[0],last=sorted[sorted.length-1];
+    const deposits=d.movimentos.filter(i=>i.corretora===first.corretora&&i.tipo==='Deposito'&&i.data>first.data&&i.data<=last.data).reduce((sum,i)=>sum+i.valor,0);
+    const capital=before(first)+deposits;
+    percentualAcumulado=capital>0?resultado/capital*100:null;
+    const days=new Map<string,number>();
+    for(const i of items)days.set(i.data,(days.get(i.data)??0)+i.resultadoFinanceiro);
+    let total=0;
+    for(const [date,result] of days){
+      const firstOfDay=d.dias.filter(i=>i.corretora===first.corretora&&i.data===date).sort(compare)[0];
+      const balance=firstOfDay?before(firstOfDay):0;
+      if(balance<=0){percentualMedio=null;break;}
+      total+=result/balance*100;
+    }
+    if(percentualMedio!==null)percentualMedio=total/days.size;
+  }
+  return {diasLancados:items.length,diasWin:items.filter(i=>i.resultadoFinanceiro>0).length,
+    diasLoss:items.filter(i=>i.resultadoFinanceiro<0).length,diasZero:items.filter(i=>i.resultadoFinanceiro===0).length,
+    operacoes:items.reduce((sum,i)=>sum+i.operacoes,0),taxaAcerto:wins+losses?wins/(wins+losses)*100:0,
+    resultado,percentualAcumulado,percentualMedio,variasCorretoras};
+}
 export function importLegacy(value: unknown): Diary {
   if (!record(value)) throw new Error('Backup inválido.');
   if (value.version === 1) { validateDiary(value); return value; }
