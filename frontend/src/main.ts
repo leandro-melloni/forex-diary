@@ -5,6 +5,8 @@ import { emptyDiary, validateDiary, importLegacy, metrics, forexSummary, opening
 import { reviewContext, reviewPrompt } from '../../shared/review';
 
 const root = document.querySelector<HTMLElement>('#app')!;
+// Altere para true para reativar a revisão do diário na interface.
+const SHOW_DIARY_REVIEW = false;
 let vault: Vault | null = null;
 let busy = false, tab = 'Diário';
 let content: HTMLElement = root;
@@ -100,11 +102,12 @@ function render(){
   const bar=node('header','','session-bar');bar.append(node('span','Cofre aberto · dados cifrados no armazenamento'));button('Sair',exit,bar);root.append(bar);
   const nav=node('nav','','tabs-nav');nav.setAttribute('aria-label','Seções do diário');root.append(nav);
   for(const [label,title] of [['Movimentações','💸 Depósitos e Saques'],['Diário','💱 Forex'],['Revisão do diário','📝 Revisão do diário'],['Evolução','📊 Evolução'],['Configurações','🏢 Cadastros e Configurações'],['Backup','💾 Backup e Dados']]){
+    if(label==='Revisão do diário'&&!SHOW_DIARY_REVIEW)continue;
     const b=button(title,()=>{if(!busy){tab=label;editingDay=undefined;render();}},nav);b.className=`tab-btn${tab===label?' active':''}`;if(tab===label)b.setAttribute('aria-current','page');
   }
   content=node('div','','tab-content active');content.id=tab==='Diário'?'abaForex':tab==='Evolução'?'abaEvolucao':'abaAtual';root.append(content);
   if(tab==='Diário')diaryView(editingDay);if(tab==='Movimentações')movementView();if(tab==='Evolução')evolutionView();
-  if(tab==='Revisão do diário')reviewView();if(tab==='Configurações')settingsView();if(tab==='Backup')backupView();
+  if(SHOW_DIARY_REVIEW&&tab==='Revisão do diário')reviewView();if(tab==='Configurações')settingsView();if(tab==='Backup')backupView();
 }
 function brokers(parent:HTMLElement,all=false){return select('Corretora',[...(all?[['','Todas'] as [string,string]]:[]),...vault!.diary.corretoras.map(n=>[n,n] as [string,string])],parent);}
 function diaryView(edit?:TradeDay){
