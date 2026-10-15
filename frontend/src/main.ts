@@ -58,35 +58,9 @@ function login() {
     const {error}=await supabase.auth.signInWithPassword({email:email.value.trim(),password:secret});
     if(error)throw new Error('Não foi possível entrar. Confira as credenciais e tente novamente.');
     loginFingerprint=await fingerprint(secret);
-    await secondFactor();
-  });
-  c.append(node('p','O acesso é criado pelo administrador do projeto. A sessão fica apenas na memória e termina ao recarregar ou fechar a página.'));
-}
-async function secondFactor() {
-  const {data:assurance,error}=await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if(error)throw new Error('Não foi possível confirmar a autenticação.');
-  if(assurance.currentLevel==='aal2'){await vaultGate();return;}
-  const {data:factors,error:listError}=await supabase.auth.mfa.listFactors();
-  if(listError)throw new Error('Não foi possível carregar o segundo fator.');
-  shell('Segundo fator');const c=card('Aplicativo autenticador');
-  button('Sair',exit,c);
-  let factor=factors.totp.find(f=>f.status==='verified')?.id;
-  if(!factor){
-    for(const f of factors.all.filter(f=>f.status==='unverified')) await supabase.auth.mfa.unenroll({factorId:f.id});
-    const {data,error:enrollError}=await supabase.auth.mfa.enroll({factorType:'totp',friendlyName:'Diário Forex'});
-    if(enrollError)throw new Error('Não foi possível cadastrar o segundo fator.');
-    factor=data.id;
-    const img=node('img');img.src=`data:image/svg+xml;charset=utf-8,${encodeURIComponent(data.totp.qr_code)}`;img.alt='QR code para cadastrar o autenticador';img.className='qr';c.append(img);
-    c.append(node('p','Cadastre este QR code no seu autenticador e guarde a configuração em local seguro.'));
-    c.append(node('code',data.totp.secret));
-  }
-  const f=node('form');c.append(f);const code=input('Código de 6 dígitos','text','',f);code.pattern='[0-9]{6}';code.inputMode='numeric';code.autocomplete='one-time-code';
-  submit('Confirmar segundo fator',f,async()=>{
-    const otp=code.value;code.value='';
-    const {error}=await supabase.auth.mfa.challengeAndVerify({factorId:factor!,code:otp});
-    if(error)throw new Error('Código inválido ou expirado. Tente novamente.');
     await vaultGate();
   });
+  c.append(node('p','O acesso é criado pelo administrador do projeto. A sessão fica apenas na memória e termina ao recarregar ou fechar a página.'));
 }
 async function vaultGate() {
   const {data,error}=await supabase.auth.getUser();

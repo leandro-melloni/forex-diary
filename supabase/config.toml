@@ -5,10 +5,10 @@ enable_signup = false
 minimum_password_length = 12
 
 [auth.mfa.totp]
-enroll_enabled = true
-verify_enabled = true
+enroll_enabled = false
+verify_enabled = false
 
 [functions.analyze-diary]
-# A função valida o token online com auth.getUser e exige AAL2 no RPC.
+# A função valida o token online com auth.getUser e o RPC exige um usuário autenticado.
 # Compatível com chaves JWT assimétricas/publishable, sem depender do gateway legado.
 verify_jwt = false

@@ -6,7 +6,7 @@ Esta implementação reduz exposição; não existe garantia de segurança absol
 
 Todos os registros, corretoras, movimentos, configurações e análises são um único documento cifrado no navegador com AES-256-GCM, tag de 128 bits e IV aleatório de 96 bits por gravação. Uma chave de dados aleatória é protegida com outra chave derivada da senha do cofre por PBKDF2-SHA256, 600.000 iterações e salt aleatório de 128 bits. O identificador do usuário, versão e finalidade são dados autenticados adicionais. A chave usada em memória não é exportável pela Web Crypto API.
 
-A senha do cofre nunca entra em requisições de autenticação, banco ou IA. O Supabase recebe apenas ciphertext e os parâmetros públicos necessários ao desbloqueio. O aplicativo não grava registros, tokens ou chaves em localStorage, sessionStorage, IndexedDB, cookies de aplicação ou caches offline. Recarregar exige login, segundo fator e desbloqueio novamente. Há saída automática após dez minutos sem interação.
+A senha do cofre nunca entra em requisições de autenticação, banco ou IA. O Supabase recebe apenas ciphertext e os parâmetros públicos necessários ao desbloqueio. O aplicativo não grava registros, tokens ou chaves em localStorage, sessionStorage, IndexedDB, cookies de aplicação ou caches offline. Recarregar exige login e desbloqueio novamente. Há saída automática após dez minutos sem interação.
 
 O email, identificador de conta, informações de autenticação/MFA, horários, tamanho do ciphertext e contagens de uso da IA continuam visíveis aos respectivos provedores. A senha de LOGIN é tratada pelo Supabase Auth; é diferente da senha do COFRE. A criptografia não protege contra um navegador/dispositivo comprometido, extensões maliciosas ou uma versão adulterada do frontend enquanto o cofre estiver aberto. Strings/chaves liberadas ficam sujeitas ao gerenciamento de memória do navegador; não se promete apagamento físico imediato.
 
@@ -15,11 +15,11 @@ Não há recuperação da senha do cofre. Perder essa senha impede recuperar os 
 ## Controle de acesso
 
 - Auth por email/senha; cadastro público desabilitado. Contas criadas pelo administrador.
-- TOTP obrigatório; RLS exige usuário proprietário e `aal2` para ler.
-- Escrita apenas pelo RPC com verificação explícita de usuário/MFA e revisão esperada. Nenhum `user_id` é aceito do cliente para escolher o proprietário.
+- Autenticação por email/senha, sem MFA no aplicativo; RLS exige usuário autenticado e proprietário para ler.
+- Escrita apenas pelo RPC com verificação explícita de usuário autenticado e revisão esperada. Nenhum `user_id` é aceito do cliente para escolher o proprietário.
 - Revisão evita sobrescrita silenciosa entre dispositivos. Importar um backup é uma substituição explícita.
 - Nenhuma chave service-role no frontend ou na função de análise. A função verifica o JWT online com `getUser` e o RPC usa a identidade do chamador.
-- `verify_jwt=false` apenas desliga o gateway JWT legado; a função implementa autenticação obrigatória. Não remova `getUser`, verificação de Bearer nem exigência de AAL2 no RPC.
+- `verify_jwt=false` apenas desliga o gateway JWT legado; a função implementa autenticação obrigatória. Não remova `getUser`, verificação de Bearer nem verificação de usuário autenticado no RPC.
 - Limite de 3 tentativas de IA/hora e 10/dia por usuário com transação e lock no banco. Tentativas que chegam à OpenAI contam mesmo se falharem.
 - CORS com lista exata de origens, sem wildcard. CORS não substitui autenticação.
 - DOM criado com textContent, sem eval, innerHTML dinâmico, handlers inline ou scripts de terceiros em runtime. CSP, HTTPS/HSTS, proteção contra frames e no-store configurados para Vercel.
@@ -32,6 +32,6 @@ Armazenamento é ponta a ponta entre os navegadores do usuário. A análise exte
 
 ## Antes de produção
 
-Execute os testes pgTAP em um Supabase local ou staging, valide acesso entre duas contas reais, MFA, backups, recuperação operacional e os headers na Vercel. Proteja contas administrativas de Supabase/Vercel/OpenAI com MFA e restrinja colaboradores. Desabilite signup no projeto hospedado; não basta alterar config.toml local. Configure senha forte, limites de sessão, limites de API e orçamento OpenAI no painel. Não habilite logs de body, gravação de sessão ou analytics que capturem dados.
+Execute os testes pgTAP em um Supabase local ou staging, valide acesso entre duas contas reais, login por senha, backups, recuperação operacional e os headers na Vercel. Proteja contas administrativas de Supabase/Vercel/OpenAI com MFA e restrinja colaboradores. Desabilite signup no projeto hospedado; não basta alterar config.toml local. Configure senha forte, limites de sessão, limites de API e orçamento OpenAI no painel. Não habilite logs de body, gravação de sessão ou analytics que capturem dados.
 
 A política CSP usa `https://*.supabase.co` para funcionar com projetos padrão; antes de publicar, substitua pelo endereço exato do seu projeto em vercel.json. Não adicione unsafe-inline/unsafe-eval. Projetos com domínio Supabase personalizado exigem ajuste explícito de CSP e validação de URL no frontend.

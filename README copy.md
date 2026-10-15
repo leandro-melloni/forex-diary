@@ -3,7 +3,7 @@
 Nova versão independente. Os arquivos do sistema local anterior permanecem intactos.
 
 ```
-frontend/       Vite + TypeScript: login, TOTP, cofre, diário e revisão
+frontend/       Vite + TypeScript: login, cofre, diário e revisão
 shared/         validação e cálculos reutilizados pelo backend
 supabase/       banco com RLS, RPCs e Edge Function de análise
 tests/          testes da criptografia, cálculos e salvamento
@@ -41,10 +41,12 @@ O arquivo de secrets está ignorado pelo Git. `SUPABASE_URL` e `SUPABASE_ANON_KE
 No painel Auth do projeto hospedado:
 
 1. Desabilite **Allow new users to sign up** e autenticação anônima.
-2. Habilite TOTP MFA. Defina senha mínima de 12 caracteres, proteção de senhas vazadas quando disponível e limites de tentativas de login.
+2. Desabilite o cadastro e a verificação TOTP MFA. Defina senha mínima de 12 caracteres, proteção de senhas vazadas quando disponível e limites de tentativas de login.
 3. Crie sua conta em **Authentication → Users**, com email confirmado e senha forte. Não há cadastro público na interface.
 4. Configure Site URL e redirect URLs somente para seu domínio e ambientes autorizados.
 5. Configure expiração de JWT e de sessões conforme as opções do plano. Para teste local, adicione `http://localhost:5173` ou `http://127.0.0.1:5173` explicitamente em ALLOWED_ORIGINS; remova ao concluir.
+
+Para projetos existentes, aplique também a migração `202610150002_password_only_auth.sql` com `supabase db push` e publique novamente o frontend. Remova fatores MFA já cadastrados nas contas pelo painel administrativo antes de desabilitar TOTP. A senha separada do cofre continua necessária para descriptografar os dados.
 
 O `config.toml` descreve o ambiente local e a função; não pressupõe que configurações Auth já foram aplicadas ao projeto hospedado.
 
@@ -57,7 +59,7 @@ Faça o deploy após validar as configurações. Nenhum projeto remoto foi criad
 
 ## Primeiro uso e migração
 
-1. Entre com email/senha e cadastre o autenticador TOTP.
+1. Entre com email/senha.
 2. Crie uma senha de cofre **diferente da senha de acesso**, com pelo menos 16 caracteres. Ela não é enviada ao Supabase e não tem recuperação.
 3. No sistema antigo, exporte o backup JSON. Na nova versão, use **Backup → Importar**. A conversão acontece no navegador; só o resultado cifrado é enviado ao banco.
 4. Revise corretoras, depósitos, resultados e stops gerais. Dados antigos de outras modalidades não são convertidos para USD.
@@ -83,4 +85,4 @@ supabase test db
 
 Os testes unitários não substituem a validação de RLS e da função no projeto real. [SECURITY.md](SECURITY.md) descreve as garantias, os limites e a exceção de privacidade necessária para análise externa.
 
-Referências: [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security), [TOTP](https://supabase.com/docs/guides/auth/auth-mfa/totp), [Auth nas funções](https://supabase.com/docs/guides/functions/auth), [Vite na Vercel](https://vercel.com/docs/frameworks/frontend/vite), [Web Crypto](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/deriveKey).
+Referências: [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security), [Auth nas funções](https://supabase.com/docs/guides/functions/auth), [Vite na Vercel](https://vercel.com/docs/frameworks/frontend/vite), [Web Crypto](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/deriveKey).

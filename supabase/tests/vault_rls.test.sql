@@ -1,25 +1,30 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(14);
+select plan(18);
 insert into auth.users(id,email) values
 ('00000000-0000-0000-0000-000000000001','vault-a@example.invalid'),
 ('00000000-0000-0000-0000-000000000002','vault-b@example.invalid');
 select set_config('test.envelope','{"v":1,"kdf":{"name":"PBKDF2-SHA256","iterations":600000,"salt":"AAAAAAAAAAAAAAAAAAAAAA=="},"wrappedKey":{"iv":"AAAAAAAAAAAAAAAA","data":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"payload":{"iv":"AAAAAAAAAAAAAAAA","data":"AAAAAAAAAAAAAAAAAAAAAA=="}}',true);
 set local role authenticated;
-select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated","aal":"aal2"}',true);
-select lives_ok($$select public.write_encrypted_vault(0,current_setting('test.envelope')::jsonb)$$,'MFA user A creates own vault');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated","aal":"aal1"}',true);
+select lives_ok($$select public.write_encrypted_vault(0,current_setting('test.envelope')::jsonb)$$,'Password user A creates own vault');
 select is((select count(*)::integer from public.encrypted_vaults),1,'A can read own vault');
-select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-000000000002","role":"authenticated","aal":"aal2"}',true);
-select lives_ok($$select public.write_encrypted_vault(0,current_setting('test.envelope')::jsonb)$$,'MFA user B creates own vault');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-000000000002","role":"authenticated","aal":"aal1"}',true);
+select lives_ok($$select public.write_encrypted_vault(0,current_setting('test.envelope')::jsonb)$$,'Password user B creates own vault');
 select is((select count(*)::integer from public.encrypted_vaults where user_id='00000000-0000-0000-0000-000000000001'),0,'B cannot read A');
 select is((select count(*)::integer from public.encrypted_vaults),1,'B sees only own vault');
 select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-000000000002","role":"authenticated","aal":"aal1"}',true);
-select is((select count(*)::integer from public.encrypted_vaults),0,'No vault visible without MFA');
-select throws_ok($$select public.write_encrypted_vault(1,current_setting('test.envelope')::jsonb)$$,'42501','MFA required','Write requires MFA');
+select is((select count(*)::integer from public.encrypted_vaults),1,'Password session can read own vault');
+select is(public.write_encrypted_vault(1,current_setting('test.envelope')::jsonb),2::bigint,'Password session can update own vault');
+select set_config('request.jwt.claims','{"role":"authenticated","aal":"aal1"}',true);
+select is((select count(*)::integer from public.encrypted_vaults),0,'Missing user cannot read vaults');
+select throws_ok($$select public.write_encrypted_vault(2,current_setting('test.envelope')::jsonb)$$,'42501','Authentication required','Missing user cannot write');
+select throws_ok($$select public.reserve_ai_request()$$,'42501','Authentication required','Missing user cannot reserve AI');
 set local role anon;
 select throws_ok($$select * from public.encrypted_vaults$$,'42501',null,'Anonymous cannot read');
+select throws_ok($$select public.write_encrypted_vault(0,current_setting('test.envelope')::jsonb)$$,'42501',null,'Anonymous cannot call write RPC');
 set local role authenticated;
-select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-000000000002","role":"authenticated","aal":"aal2"}',true);
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-000000000002","role":"authenticated","aal":"aal1"}',true);
 select throws_ok($$update public.encrypted_vaults set revision=999$$,'42501',null,'Direct table write forbidden');
 select throws_ok($$select public.write_encrypted_vault(999,current_setting('test.envelope')::jsonb)$$,'40001','Concurrent modification','Stale write cannot overwrite');
 select lives_ok($$select public.reserve_ai_request()$$,'First AI reservation');
