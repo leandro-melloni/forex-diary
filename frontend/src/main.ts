@@ -105,10 +105,10 @@ function render(){
   root.classList.add('authenticated');
   const bar=node('header','','session-bar');bar.append(node('span','Cofre aberto · dados cifrados no armazenamento'));button('Sair',exit,bar);root.append(bar);
   const nav=node('nav','','tabs-nav');nav.setAttribute('aria-label','Seções do diário');root.append(nav);
-  for(const [label,title] of [['Movimentações','💸 Depósitos e Saques'],['Diário','💱 Forex'],['Revisão do diário','📝 Revisão do diário'],['Evolução','📊 Evolução'],['Configurações','🏢 Cadastros e Configurações'],['Backup','💾 Backup e Dados']]){
+  for(const [label,title] of [['Movimentações','💸 Depósitos e Saques'],['Diário','💱 Diário de trading'],['Revisão do diário','📝 Revisão do diário'],['Evolução','📊 Evolução'],['Configurações','🏢 Cadastros e Configurações'],['Backup','💾 Backup e Dados']]){
     if(label==='Revisão do diário'&&!SHOW_DIARY_REVIEW)continue;
     const b=button(title,()=>{if(!busy){tab=label;editingDay=undefined;render();}},nav);b.className=`tab-btn${tab===label?' active':''}`;if(tab===label)b.setAttribute('aria-current','page');
-    b.replaceChildren(node('span',title,'nav-desktop'),node('span',title.split(' ')[0],'nav-icon'),node('span',label==='Movimentações'?'Movimentos':label==='Diário'?'Forex':label==='Configurações'?'Ajustes':label==='Revisão do diário'?'Revisão':label,'nav-mobile'));b.setAttribute('aria-label',title);
+    b.replaceChildren(node('span',title,'nav-desktop'),node('span',title.split(' ')[0],'nav-icon'),node('span',label==='Movimentações'?'Movimentos':label==='Diário'?'Diário de trading':label==='Configurações'?'Ajustes':label==='Revisão do diário'?'Revisão':label,'nav-mobile'));b.setAttribute('aria-label',title);
   }
   content=node('div','','tab-content active');content.id=tab==='Diário'?'abaForex':tab==='Evolução'?'abaEvolucao':'abaAtual';root.append(content);
   if(tab==='Diário')diaryView(editingDay);if(tab==='Movimentações')movementView();if(tab==='Evolução')evolutionView();

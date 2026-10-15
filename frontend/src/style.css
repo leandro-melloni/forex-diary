@@ -302,7 +302,7 @@
       .tab-btn.active { color: #1f6798; background: #eaf4ff; }
       .nav-desktop { display: none; }
       .nav-icon { display: block; font-size: 1.3rem; }
-      .nav-mobile { display: block; }
+      .nav-mobile { display: block; max-width: 100%; white-space: normal; line-height: 1.15; }
       .card { padding: 16px; border-radius: 14px; margin-bottom: 16px; }
       input, select, textarea { font-size: 16px; min-height: 48px; border-radius: 8px; }
       button, .btn-delete, .btn-edit { min-height: 44px; padding: 10px 14px; }
