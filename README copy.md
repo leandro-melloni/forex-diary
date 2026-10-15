@@ -65,7 +65,7 @@ O frontend utiliza o layout de `opcoes-binarias.html`, com abas, cartões, formu
 2. Crie uma senha de cofre **diferente da senha de acesso**, com pelo menos 16 caracteres. Ela não é enviada ao Supabase e não tem recuperação.
 3. No sistema antigo, exporte o backup JSON. Na nova versão, use **Backup → Importar**. A conversão acontece no navegador; só o resultado cifrado é enviado ao banco.
 4. Revise corretoras, depósitos, resultados e stops gerais. Dados antigos de outras modalidades não são convertidos para USD.
-5. Para analisar, escolha corretora/mês em **Revisão do diário** e confirme o envio do recorte. O texto retorna ao navegador e é salvo cifrado. São mantidas 20 análises.
+5. Para analisar externamente, escolha corretora/resultado/mês em **Revisão do diário**, clique em **Preparar solicitação para IA**, revise e copie o prompt. Cole no ChatGPT ou em outro assistente; depois cole a resposta e use **Salvar análise no diário**. Preparar/copiar não chama a API. A resposta é salva cifrada e vinculada ao recorte preparado; são mantidas 20 análises. A integração direta via API permanece em uma seção opcional e exige créditos próprios.
 
 O backup padrão da nova versão é criptografado. É possível importá-lo na mesma conta ou em outra conta informando a senha do cofre de origem. O conteúdo é então recifrado com a chave da conta de destino.
 

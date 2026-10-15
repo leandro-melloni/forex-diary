@@ -26,6 +26,8 @@ Não há recuperação da senha do cofre. Perder essa senha impede recuperar os 
 
 ## Exceção explícita: análise por IA
 
+O fluxo manual prepara o prompt no navegador, sem chamadas à IA. Copiar coloca o texto descriptografado na área de transferência; o usuário escolhe onde compartilhar. O prompt inclui somente os lançamentos selecionados, métricas e configuração/limites correspondentes, sem senha do cofre ou chaves. A resposta colada é criptografada antes do salvamento. Alterações nos dados ou filtros exigem preparar uma nova solicitação antes de salvar.
+
 Armazenamento é ponta a ponta entre os navegadores do usuário. A análise externa não pode manter os dados ilegíveis para quem os analisa: após consentimento por chamada, o recorte escolhido é enviado em texto legível por HTTPS à Edge Function e à OpenAI. A senha do cofre e as chaves nunca acompanham esse recorte. A função não armazena nem registra em logs o recorte ou a resposta. Retorna o texto ao navegador, que o cifra e salva no cofre. Não existe persistência de respostas em texto aberto no backend.
 
 `store:false` desabilita armazenamento do objeto Response pela API; isso não equivale a garantia de Zero Data Retention. Os termos e políticas de retenção da conta/provedor continuam aplicáveis. Dados não selecionados ficam fora do envio. Se o navegador fechar antes de receber e cifrar a resposta, ela não será registrada no cofre. Erros de salvamento mantêm a resposta pendente em memória para nova tentativa, sem nova chamada paga.

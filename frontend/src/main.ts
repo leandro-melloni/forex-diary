@@ -2,6 +2,7 @@ import './style.css';
 import { configured, supabase, readVault, writeVault, Vault, analyze } from './api';
 import { createVault, unlockVault, validateEnvelope } from './crypto';
 import { emptyDiary, validateDiary, importLegacy, metrics, forexSummary, opening, limits, validateStops, type Diary, type TradeDay } from '../../shared/domain';
+import { reviewContext, reviewPrompt } from '../../shared/review';
 
 const root = document.querySelector<HTMLElement>('#app')!;
 let vault: Vault | null = null;
@@ -188,17 +189,64 @@ function stopsView(){
   c.append(node('p','Aplicada a todas as corretoras e datas. Consultas antigas usam a regra atual e não comprovam quais limites existiam na época.'));
 }
 function reviewView(){
-  const c=card('Revisão do diário'),f=node('form','','grid');c.append(f);const broker=brokers(f,true),month=input('Mês','month','',f);month.required=false;
-  const consent=input('Autorizo enviar o recorte descriptografado ao Supabase Edge Function e à OpenAI para esta análise.','checkbox','',f);consent.required=true;
-  c.append(node('p','Este envio sai do fluxo de armazenamento ponta a ponta: o backend e a OpenAI recebem o recorte em texto legível durante o processamento. O backend não o grava. A resposta volta ao navegador e é criptografada antes de ser salva. Mantenha esta sessão aberta até concluir.'));
-  const summary=node('p');c.append(summary);
-  const selected=()=>vault!.diary.dias.filter(i=>(!broker.value||i.corretora===broker.value)&&(!month.value||i.data.startsWith(month.value)));
-  const update=()=>{const m=metrics(selected());summary.textContent=`${m.dias} datas · ${m.operacoes} operações · resultado ${money(m.resultadoLiquidoRegistrado)} · queda máxima do resultado acumulado: ${money(m.drawdownResultadosUSD)}. Não representa drawdown da equity.`;};broker.addEventListener('change',update);month.addEventListener('change',update);update();
+  const filters=card('Revisão do diário');filters.append(node('p','Selecione o recorte para revisar seu desempenho no Forex. Estes filtros são independentes dos filtros do histórico.'));
+  const grid=node('div','','grid');filters.append(grid);
+  const broker=brokers(grid,true),resultFilter=select('Resultado do dia',[['','Todos'],['Win','Win'],['Loss','Loss'],['Zero','Zero a zero']],grid),month=input('Mês','month','',grid);month.required=false;
+  const context=()=>reviewContext(vault!.diary,{corretora:broker.value,resultado:resultFilter.value,mes:month.value});
+  const c=card('Limites e melhorias');c.append(node('p','O diagnóstico abaixo é calculado localmente. Prepare a solicitação para analisar o recorte no ChatGPT ou em outro assistente e depois salve a resposta no diário.'),node('p','Metodologia adaptada de Trader Memory Core: plano → execução → resultado → lições.'));
+  const diagnostic=node('div');diagnostic.setAttribute('aria-live','polite');c.append(diagnostic);
+  const manual=card('Análise externa · copiar solicitação e colar resposta');
+  manual.append(node('p','1. Prepare a solicitação com os filtros atuais. 2. Revise e copie o texto para seu assistente de IA. 3. Cole a resposta abaixo e salve. A geração do prompt acontece no navegador, sem chamada à API OpenAI. O texto inclui resultados e anotações; revise antes de compartilhar.'));
+  let snapshot:string|null=null;
+  const prepare=()=>{
+    const selected=context();
+    try{const generated=reviewPrompt(selected);snapshot=JSON.stringify(selected);prompt.value=generated;answer.value='';message('Solicitação preparada. Revise os dados, copie e envie ao seu assistente de IA.');}
+    catch(e){snapshot=null;prompt.value='';message(e instanceof Error?e.message:'Não foi possível preparar a solicitação.');}
+  };
+  const prepareButton=button('Preparar solicitação para IA',prepare,manual);prepareButton.className='';
+  const prompt=textarea('Solicitação e dados para revisar e copiar','',manual);prompt.id='promptForexIA';prompt.rows=10;prompt.readOnly=true;prompt.removeAttribute('maxlength');
+  const copyButton=button('Copiar solicitação',()=>{
+    if(!prompt.value||snapshot!==JSON.stringify(context()))prepare();
+    if(!prompt.value)return;
+    void (async()=>{try{await navigator.clipboard.writeText(prompt.value);message('Solicitação copiada. Cole no ChatGPT ou no assistente de sua preferência.');}
+    catch{prompt.focus();prompt.select();message('Cópia automática indisponível. Texto selecionado: use Ctrl+C ou o comando Copiar.');}})();
+  },manual);
+  const answerForm=node('form');manual.append(answerForm);
+  const answer=textarea('Resposta da IA','',answerForm);answer.id='respostaForexIA';answer.rows=10;answer.maxLength=60000;answer.required=true;answer.placeholder='Cole a análise produzida pelo seu assistente.';
+  const saveButton=submit('Salvar análise no diário',answerForm,async()=>{
+    if(!snapshot||!prompt.value)throw new Error('Prepare a solicitação e cole a resposta da IA antes de salvar.');
+    if(snapshot!==JSON.stringify(context()))throw new Error('Os dados ou filtros mudaram desde a preparação. Prepare uma nova solicitação para analisar o recorte atual.');
+    const text=answer.value.trim();if(!text)throw new Error('Cole a resposta da IA antes de salvar.');
+    if(pendingReview)throw new Error('Salve a análise pendente antes de registrar outra resposta.');
+    pendingReview={id:crypto.randomUUID(),data:new Date().toISOString(),contexto:snapshot,texto:text,modelo:'Análise externa'};
+    await persistReview();
+  });
+  manual.append(node('p','A resposta é criptografada antes de salvar no Supabase. São mantidas as 20 análises mais recentes, também incluídas no backup.'));
+  const update=()=>{
+    const selected=context(),m=metrics(selected.registros);diagnostic.replaceChildren();
+    if(resultFilter.value)diagnostic.append(node('p','O filtro de resultado exclui parte dos dias e pode distorcer taxa de acerto, sequências e drawdown. Use “Todos” para revisar desempenho.','val-negativo'));
+    if(!m.lancamentos)diagnostic.append(node('p','Nenhum lançamento nos filtros atuais. Registre seus dias ou ajuste os filtros para iniciar a revisão.'));
+    else{
+      diagnostic.append(node('p',`Recorte: ${m.dias} datas, ${m.lancamentos} lançamentos e ${m.operacoes} operações. Resultado registrado: ${money(m.resultadoLiquidoRegistrado)}. Acerto entre wins/losses: ${m.taxaAcerto===null?'não disponível':m.taxaAcerto.toFixed(1)+'%'}.`),
+        node('p',`Maior queda do resultado acumulado no recorte: ${money(m.drawdownResultadosUSD)}. Maior sequência negativa: ${m.maiorSequenciaDiasNegativos} datas registradas. Não representa drawdown de equity nem perdas intradiárias.`),
+        node('h3','Acertos observáveis'),node('p',m.resultadoLiquidoRegistrado>0?'O saldo dos resultados é positivo neste recorte; isso não comprova vantagem estatística.':'O histórico permite acompanhar perdas e revisar a execução com evidências.'),
+        node('h3','Pontos a revisar'),node('p',`Compare os resultados com os limites diários configurados. Lucro não prova boa execução, e prejuízo não prova erro. ${selected.registros.filter(i=>!i.contexto.trim()).length} lançamentos sem contexto detalhado. Sem entradas, stops, saídas, risco e custos por operação, não é possível calcular R, payoff ou expectativa por trade.`),
+        node('h3','Próximas melhorias'));
+      const list=node('ol');for(const text of ['Configure Stop Loss e Stop Win antes da sessão e registre se voltou a operar após atingir os limites.','Documente tese, invalidação, risco planejado e execução real em cada operação.','Teste uma mudança de processo por vez e compare amostras equivalentes por par, sessão e setup. Trate padrões como hipóteses.'])list.append(node('li',text));diagnostic.append(list);
+    }
+    for(const control of [prepareButton,copyButton,saveButton])control.disabled=!m.lancamentos;
+    if(snapshot&&snapshot!==JSON.stringify(selected))message('Os filtros mudaram. Prepare uma nova solicitação antes de salvar a resposta.');
+  };
+  for(const control of [broker,resultFilter,month])control.addEventListener('change',update);
+  button('Limpar filtros',()=>{broker.value='';resultFilter.value='';month.value='';update();},grid);update();
+  const automatic=node('details');automatic.append(node('summary','Integração opcional · gerar análise pela API OpenAI'));content.append(automatic);
+  automatic.append(node('p','Esta opção exige chave e créditos da API OpenAI. O recorte será enviado em texto legível ao Supabase Edge Function e à OpenAI. A resposta será criptografada e salva no diário.'));
+  const f=node('form');automatic.append(f);
+  const consent=input('Autorizo enviar o recorte selecionado ao Supabase Edge Function e à OpenAI para esta análise.','checkbox','',f);
   submit('Gerar análise com ChatGPT',f,async()=>{
     if(!consent.checked)throw new Error('Confirme o envio dos dados para esta análise.');
-    const d=vault!.diary,registros=structuredClone(selected());if(!registros.length)throw new Error('Nenhum lançamento selecionado.');
-    const contexto={filtros:{corretora:broker.value||'todas',mes:month.value},configuracaoGeralStops:d.stops,registros,
-      limitesDiarios:Object.fromEntries(registros.map(i=>[JSON.stringify([i.corretora,i.data]),limits(d,i.corretora,i.data)]))};
+    if(pendingReview)throw new Error('Salve a análise pendente antes de gerar outra análise.');
+    const contexto=structuredClone(context());if(!contexto.registros.length)throw new Error('Nenhum lançamento selecionado.');
     message('Gerando análise. Aguarde e mantenha a sessão aberta...');consent.checked=false;
     const result=await analyze(contexto);
     pendingReview={id:crypto.randomUUID(),data:new Date().toISOString(),contexto:JSON.stringify(contexto),texto:result.texto,modelo:result.modelo};
