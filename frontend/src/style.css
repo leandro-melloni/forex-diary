@@ -30,14 +30,17 @@
     /* NAVEGAÇÃO POR ABAS */
     .tabs-nav {
       display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      gap: 6px;
       margin-bottom: 20px;
       border-bottom: 2px solid var(--border);
     }
 
     .tab-btn {
-      padding: 12px 24px;
+      flex: 0 0 auto;
+      white-space: nowrap;
+      padding: 12px 14px;
       background-color: #e0e0e0;
       color: #555;
       border: none;
@@ -45,7 +48,7 @@
       border-top-right-radius: 8px;
       cursor: pointer;
       font-weight: bold;
-      font-size: 1rem;
+      font-size: 0.9rem;
       transition: all 0.2s ease;
     }
 
@@ -247,7 +250,8 @@
     .grid label:has(textarea), .grid label:has(input[type=checkbox]) { grid-column: 1 / -1; }
     button { font-family: inherit; }
     button:disabled { opacity: .6; cursor: wait; }
-    .actions { display: flex; gap: 5px; flex-wrap: wrap; }
+    .actions { display: flex; gap: 5px; flex-wrap: nowrap; }
+    .actions button { white-space: nowrap; }
     p { line-height: 1.6; }
     .notice { background: #eaf4ff; border-left: 4px solid var(--accent); border-radius: 5px; padding: 15px; }
     .table-responsive { overflow-x: auto; }

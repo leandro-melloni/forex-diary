@@ -132,7 +132,6 @@ function diaryView(edit?:TradeDay){
     if(edit)d.dias=d.dias.map(i=>i.id===edit.id?item:i);else d.dias.push(item);
   }));
   if(edit){button('Cancelar',()=>{editingDay=undefined;render();},c);return;}
-  stopsView();
   const filtersCard=card('Filtros Forex'),filters=node('div','','grid');filtersCard.append(filters);const filterBroker=brokers(filters,true),month=input('Mês','month','',filters);month.required=false;
   const history=card('Resumo e histórico Forex'),area=node('div');history.append(area);
   const refresh=()=>{area.replaceChildren();const selected=vault!.diary.dias.filter(i=>(!filterBroker.value||i.corretora===filterBroker.value)&&(!month.value||i.data.startsWith(month.value))).sort((a,b)=>b.data.localeCompare(a.data));const m=metrics(selected);
