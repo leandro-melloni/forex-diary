@@ -5,10 +5,10 @@ import { isPublicSupabaseKey, isSupabaseUrl } from '../../shared/public-config';
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const publicKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 export const configured = !!url && !!publicKey && isSupabaseUrl(url) && isPublicSupabaseKey(publicKey);
-export const supabase = createClient(configured ? url! : 'https://unconfigured.supabase.co', configured ? publicKey! : 'unconfigured', { auth:{persistSession:false, autoRefreshToken:true, detectSessionInUrl:false, flowType:'pkce'} });
+export const supabase = createClient(configured ? url! : 'https://unconfigured.supabase.co', configured ? publicKey! : 'unconfigured', { auth:{persistSession:true, storage:typeof window === 'undefined' ? undefined : window.sessionStorage, autoRefreshToken:true, detectSessionInUrl:false, flowType:'pkce'} });
 export async function readVault(uid: string) {
   const {data,error} = await supabase.from('encrypted_vaults').select('revision,envelope').eq('user_id',uid).maybeSingle();
-  if (error) throw new Error('Não foi possível carregar o cofre. Confira sua sessão e o segundo fator.');
+  if (error) throw new Error('Não foi possível carregar o cofre. Confira sua sessão e tente novamente.');
   return data as {revision:number; envelope:Envelope} | null;
 }
 export async function writeVault(revision: number, envelope: Envelope): Promise<number> {

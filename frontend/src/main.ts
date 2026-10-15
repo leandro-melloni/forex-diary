@@ -5,7 +5,8 @@ import { emptyDiary, validateDiary, importLegacy, metrics, opening, limits, vali
 
 const root = document.querySelector<HTMLElement>('#app')!;
 let vault: Vault | null = null;
-let busy = false, tab = 'Diário', idle: ReturnType<typeof setTimeout>;
+let busy = false, tab = 'Diário';
+let content: HTMLElement = root;
 let pendingReview: { contexto:string; texto:string; modelo:string; id:string; data:string } | null = null;
 let editingDay: TradeDay | undefined;
 let loginFingerprint: string | null = null;
@@ -16,11 +17,13 @@ function node<K extends keyof HTMLElementTagNameMap>(tag:K,text='',className='')
 }
 function message(text:string) { const box=document.querySelector('#status'); if (box) box.textContent=text; }
 function shell(title:string) {
+  content=root;
+  root.className='container';
   root.replaceChildren(node('h1',title));
   const status=node('p','','status'); status.id='status'; status.setAttribute('role','status'); root.append(status);
 }
-function card(title:string,parent:HTMLElement=root) { const el=node('section','','card'); el.append(node('h2',title)); parent.append(el); return el; }
-function button(text:string,handler:()=>void,parent:HTMLElement) { const b=node('button',text); b.type='button'; b.addEventListener('click',handler); parent.append(b); return b; }
+function card(title:string,parent:HTMLElement=content) { const el=node('section','','card'); el.append(node('h2',title)); parent.append(el); return el; }
+function button(text:string,handler:()=>void,parent:HTMLElement) { const b=node('button',text); b.type='button'; b.className=/Excluir|Remover/.test(text)?'btn-delete':text==='Editar'?'btn-edit':'btn-secundario'; b.addEventListener('click',handler); parent.append(b); return b; }
 function input(label:string,type='text',value='',parent:HTMLElement=root) {
   const l=node('label',label), i=node('input'); i.type=type; i.value=value; i.required=true; l.append(i); parent.append(l); return i;
 }
@@ -43,9 +46,7 @@ function download(data:unknown,name:string) {
   const a=node('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function exit() { vault=null;pendingReview=null;loginFingerprint=null;root.replaceChildren();void supabase.auth.signOut({scope:'local'}).finally(()=>location.reload()); }
-function resetIdle() { clearTimeout(idle); if(vault)idle=setTimeout(exit,10*60*1000); }
-for(const event of ['pointerdown','keydown']) document.addEventListener(event,resetIdle,{passive:true});
-supabase.auth.onAuthStateChange((event)=>{ if(event==='SIGNED_OUT'&&vault){vault=null;pendingReview=null;location.reload();} });
+supabase.auth.onAuthStateChange((event)=>{ if(event==='SIGNED_OUT'){vault=null;pendingReview=null;loginFingerprint=null;login();} });
 
 function login() {
   shell('Diário Forex privado');
@@ -60,7 +61,7 @@ function login() {
     loginFingerprint=await fingerprint(secret);
     await vaultGate();
   });
-  c.append(node('p','O acesso é criado pelo administrador do projeto. A sessão fica apenas na memória e termina ao recarregar ou fechar a página.'));
+  c.append(node('p','O acesso é criado pelo administrador do projeto. O login permanece ativo nesta aba até você sair ou fechar o navegador.'));
 }
 async function vaultGate() {
   const {data,error}=await supabase.auth.getUser();
@@ -77,7 +78,7 @@ async function vaultGate() {
     if(!row&&loginFingerprint===await fingerprint(secret))throw new Error('Escolha uma senha do cofre diferente da senha usada no login.');
     if(row){const opened=await unlockVault(uid,secret,row.envelope);validateDiary(opened.value);vault=new Vault(uid,row.revision,row.envelope,opened.key,opened.value);}
     else{const diary=emptyDiary(),created=await createVault(uid,secret,diary);const revision=await writeVault(0,created.envelope);vault=new Vault(uid,revision,created.envelope,created.key,diary);}
-    loginFingerprint=null;render();resetIdle();
+    loginFingerprint=null;render();
   });
   button('Sair',exit,c);
 }
@@ -87,19 +88,20 @@ async function change(edit:(d:Diary)=>void) {
   const next=structuredClone(vault.diary);edit(next);await vault.save(next);editingDay=undefined;render();message('Salvo criptografado no Supabase.');
 }
 function table(headers:string[],rows:(string|HTMLElement)[][],parent:HTMLElement){
-  const wrapper=node('div','','table-wrap'),t=node('table'),head=node('tr');for(const h of headers)head.append(node('th',h));
+  const wrapper=node('div','','table-responsive'),t=node('table'),head=node('tr');for(const h of headers)head.append(node('th',h));
   const thead=node('thead');thead.append(head);t.append(thead);const body=node('tbody');
   for(const row of rows){const tr=node('tr');for(const value of row){const td=node('td');typeof value==='string'?td.textContent=value:td.append(value);tr.append(td);}body.append(tr);}
   t.append(body);wrapper.append(t);parent.append(wrapper);
-  if(!rows.length)parent.append(node('p','Nenhum registro neste recorte.'));
+  if(!rows.length)parent.append(node('p','Nenhum registro neste recorte.','empty-msg'));
 }
 function render(){
-  if(!vault)return;shell('Diário Forex');
-  const bar=node('header');bar.append(node('span','Cofre aberto · dados cifrados no armazenamento'));button('Bloquear e sair',exit,bar);root.append(bar);
-  const nav=node('nav');root.append(nav);
-  for(const label of ['Diário','Movimentações','Evolução','Revisão do diário','Configurações','Backup']){
-    const b=button(label,()=>{if(!busy){tab=label;editingDay=undefined;render();}},nav);b.className=tab===label?'active':'';
+  if(!vault)return;shell('📈 Diário de Trading Forex');
+  const bar=node('header','','session-bar');bar.append(node('span','Cofre aberto · dados cifrados no armazenamento'));button('Sair',exit,bar);root.append(bar);
+  const nav=node('nav','','tabs-nav');nav.setAttribute('aria-label','Seções do diário');root.append(nav);
+  for(const [label,title] of [['Movimentações','💸 Depósitos e Saques'],['Diário','💱 Forex'],['Revisão do diário','📝 Revisão do diário'],['Evolução','📊 Evolução'],['Configurações','🏢 Cadastros e Configurações'],['Backup','💾 Backup e Dados']]){
+    const b=button(title,()=>{if(!busy){tab=label;editingDay=undefined;render();}},nav);b.className=`tab-btn${tab===label?' active':''}`;if(tab===label)b.setAttribute('aria-current','page');
   }
+  content=node('div','','tab-content active');content.id=tab==='Diário'?'abaForex':tab==='Evolução'?'abaEvolucao':'abaAtual';root.append(content);
   if(tab==='Diário')diaryView(editingDay);if(tab==='Movimentações')movementView();if(tab==='Evolução')evolutionView();
   if(tab==='Revisão do diário')reviewView();if(tab==='Configurações')settingsView();if(tab==='Backup')backupView();
 }
@@ -130,32 +132,55 @@ function diaryView(edit?:TradeDay){
     if(edit)d.dias=d.dias.map(i=>i.id===edit.id?item:i);else d.dias.push(item);
   }));
   if(edit){button('Cancelar',()=>{editingDay=undefined;render();},c);return;}
-  const history=card('Histórico diário'),filters=node('div','','grid');history.append(filters);const filterBroker=brokers(filters,true),month=input('Mês','month','',filters);month.required=false;
-  const area=node('div');history.append(area);
-  const refresh=()=>{area.replaceChildren();const selected=vault!.diary.dias.filter(i=>(!filterBroker.value||i.corretora===filterBroker.value)&&(!month.value||i.data.startsWith(month.value))).sort((a,b)=>b.data.localeCompare(a.data));const m=metrics(selected);area.append(node('p',`${m.dias} datas · ${m.operacoes} operações · acerto ${m.taxaAcerto?.toFixed(2)??'—'}% · resultado ${money(m.resultadoLiquidoRegistrado)}`));
+  stopsView();
+  const filtersCard=card('Filtros Forex'),filters=node('div','','grid');filtersCard.append(filters);const filterBroker=brokers(filters,true),month=input('Mês','month','',filters);month.required=false;
+  const history=card('Resumo e histórico Forex'),area=node('div');history.append(area);
+  const refresh=()=>{area.replaceChildren();const selected=vault!.diary.dias.filter(i=>(!filterBroker.value||i.corretora===filterBroker.value)&&(!month.value||i.data.startsWith(month.value))).sort((a,b)=>b.data.localeCompare(a.data));const m=metrics(selected);
+    summaryCards([['Dias',String(m.dias)],['Operações',String(m.operacoes)],['Wins',String(m.wins)],['Losses',String(m.losses)],['Taxa de acerto',m.taxaAcerto===null?'—':`${m.taxaAcerto.toFixed(2)}%`],['Resultado líquido',money(m.resultadoLiquidoRegistrado),m.resultadoLiquidoRegistrado],['Média dia positivo',m.mediaDiaPositivo===null?'—':money(m.mediaDiaPositivo)],['Média dia negativo',m.mediaDiaNegativo===null?'—':money(m.mediaDiaNegativo)],['Queda dos resultados',money(m.drawdownResultadosUSD)]],area);
     table(['Data','Corretora','Operações','Wins/Losses','Resultado','Observações','Ações'],selected.map(i=>{
       const actions=node('div','','actions');button('Editar',()=>{if(!busy){editingDay=i;render();}},actions);
       button('Excluir',()=>{if(confirm('Excluir este lançamento?'))void run(()=>change(d=>{d.dias=d.dias.filter(v=>v.id!==i.id);}));},actions);
-      return [i.data,i.corretora,String(i.operacoes),`${i.wins}/${i.losses}`,money(i.resultadoFinanceiro),i.observacao,actions];
+      return [i.data,i.corretora,String(i.operacoes),`${i.wins}/${i.losses}`,node('span',money(i.resultadoFinanceiro),i.resultadoFinanceiro<0?'val-negativo':'val-positivo'),i.observacao,actions];
     }),area);
-  };filterBroker.addEventListener('change',refresh);month.addEventListener('change',refresh);refresh();
+  };filterBroker.addEventListener('change',refresh);month.addEventListener('change',refresh);button('Limpar filtros',()=>{filterBroker.value='';month.value='';refresh();},filters);refresh();
+}
+function summaryCards(items:[string,string,number?][],parent:HTMLElement){
+  const grid=node('div','','resumo-grid');
+  for(const [label,value,amount] of items){const item=node('div','','resumo-item');item.append(node('span',label),node('strong',value,amount===undefined?'':amount<0?'val-negativo':'val-positivo'));grid.append(item);}
+  parent.append(grid);
 }
 function movementView(){
-  const c=card('Depósitos e saques'),f=node('form','','grid');c.append(f);
+  const c=card('Novo lançamento · Depósitos e Saques'),f=node('form','','grid');c.append(f);
   if(!vault!.diary.corretoras.length){c.append(node('p','Cadastre uma corretora em Configurações.'));return;}
   const broker=brokers(f),type=select('Tipo',[['Deposito','Depósito'],['Saque','Saque']],f),date=input('Data','date',new Date().toLocaleDateString('en-CA'),f),value=input('Valor (US$)','number','',f);value.min='.01';value.step='.01';
   submit('Salvar movimento',f,()=>change(d=>{d.movimentos.push({id:crypto.randomUUID(),corretora:broker.value,data:date.value,tipo:type.value as 'Deposito'|'Saque',valor:Number(value.value)});}));
-  table(['Data','Corretora','Tipo','Valor','Ação'],vault!.diary.movimentos.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(i=>{const a=node('div');button('Excluir',()=>{if(confirm('Excluir este movimento? Isso recalculará os saldos de abertura.'))void run(()=>change(d=>{d.movimentos=d.movimentos.filter(v=>v.id!==i.id);}));},a);return[i.data,i.corretora,i.tipo,money(i.valor),a];}),c);
+  const filters=card('Filtros'),grid=node('div','','grid');filters.append(grid);
+  const filterBroker=brokers(grid,true),filterType=select('Tipo de operação',[['','Todos'],['Deposito','Depósito'],['Saque','Saque']],grid),month=input('Mês','month','',grid);month.required=false;
+  const summary=card('Resumo por Corretora'),history=card('Histórico de movimentações');
+  const refresh=()=>{
+    summary.replaceChildren(node('h2','Resumo por Corretora'));history.replaceChildren(node('h2','Histórico de movimentações'));
+    const selected=vault!.diary.movimentos.filter(i=>(!filterBroker.value||i.corretora===filterBroker.value)&&(!filterType.value||i.tipo===filterType.value)&&(!month.value||i.data.startsWith(month.value)));
+    table(['Corretora','Total Depósitos','Total Saques','Saldo de movimentos'],vault!.diary.corretoras.filter(n=>!filterBroker.value||n===filterBroker.value).map(n=>{
+      const items=selected.filter(i=>i.corretora===n),deposits=items.filter(i=>i.tipo==='Deposito').reduce((s,i)=>s+i.valor,0),withdrawals=items.filter(i=>i.tipo==='Saque').reduce((s,i)=>s+i.valor,0);
+      return[n,money(deposits),money(withdrawals),money(deposits-withdrawals)];
+    }),summary);
+    table(['Data','Corretora','Tipo','Valor','Ação'],selected.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(i=>{const a=node('div');button('Excluir',()=>{if(confirm('Excluir este movimento? Isso recalculará os saldos de abertura.'))void run(()=>change(d=>{d.movimentos=d.movimentos.filter(v=>v.id!==i.id);}));},a);return[i.data,i.corretora,i.tipo==='Deposito'?'Depósito':'Saque',node('span',money(i.valor),i.tipo==='Deposito'?'val-positivo':'val-negativo'),a];}),history);
+  };
+  for(const control of [filterBroker,filterType,month])control.addEventListener('change',refresh);
+  button('Limpar filtros',()=>{filterBroker.value='';filterType.value='';month.value='';refresh();},grid);refresh();
 }
 function settingsView(){
+  stopsView();
+  const b=card('Corretoras Forex'),bf=node('form','','grid');b.append(bf);const name=input('Nome da corretora','text','',bf);name.maxLength=200;
+  submit('Cadastrar',bf,()=>change(d=>{const n=name.value.trim().toUpperCase();if(!n||d.corretoras.includes(n))throw new Error('Informe uma corretora nova.');d.corretoras.push(n);}));
+  for(const n of vault!.diary.corretoras){const p=node('p',`${n} · USD`);button('Remover',()=>void run(()=>change(d=>{if(d.dias.some(i=>i.corretora===n)||d.movimentos.some(i=>i.corretora===n))throw new Error('A corretora possui registros.');d.corretoras=d.corretoras.filter(v=>v!==n);})),p);b.append(p);}
+}
+function stopsView(){
   const c=card('Configuração geral de Stop Loss e Stop Win'),f=node('form','','grid');c.append(f);
   const s=vault!.diary.stops,unit=select('Unidade',[['percentual','% do saldo de abertura'],['usd','US$ fixos']],f);unit.value=s?.unidade||'percentual';
   const loss=input('Stop Loss diário','number',String(s?.loss??''),f),win=input('Stop Win diário','number',String(s?.win??''),f);for(const i of [loss,win]){i.min='.01';i.step='.01';}
   submit('Salvar configuração geral',f,()=>change(d=>{const stops={unidade:unit.value as 'percentual'|'usd',loss:Number(loss.value),win:Number(win.value),configuradoEm:new Date().toISOString()};validateStops(stops);d.stops=stops;}));
   c.append(node('p','Aplicada a todas as corretoras e datas. Consultas antigas usam a regra atual e não comprovam quais limites existiam na época.'));
-  const b=card('Corretoras Forex'),bf=node('form','','grid');b.append(bf);const name=input('Nome da corretora','text','',bf);name.maxLength=200;
-  submit('Cadastrar',bf,()=>change(d=>{const n=name.value.trim().toUpperCase();if(!n||d.corretoras.includes(n))throw new Error('Informe uma corretora nova.');d.corretoras.push(n);}));
-  for(const n of vault!.diary.corretoras){const p=node('p',`${n} · USD`);button('Remover',()=>void run(()=>change(d=>{if(d.dias.some(i=>i.corretora===n)||d.movimentos.some(i=>i.corretora===n))throw new Error('A corretora possui registros.');d.corretoras=d.corretoras.filter(v=>v!==n);})),p);b.append(p);}
 }
 function reviewView(){
   const c=card('Revisão do diário'),f=node('form','','grid');c.append(f);const broker=brokers(f,true),month=input('Mês','month','',f);month.required=false;
@@ -180,7 +205,7 @@ function reviewView(){
   }
   for(const r of vault!.diary.revisoes.slice().reverse()){
     const detail=node('details'),title=node('summary',`${new Date(r.data).toLocaleString('pt-BR')} · ${r.modelo||'Importada'}`);detail.append(title,node('pre',r.texto));
-    const source=node('details');source.append(node('summary','Dados analisados'),node('pre',r.contexto));detail.append(source);root.append(detail);
+    const source=node('details');source.append(node('summary','Dados analisados'),node('pre',r.contexto));detail.append(source);content.append(detail);
   }
 }
 async function persistReview(){
@@ -193,9 +218,11 @@ function evolutionView(){
   for(const i of vault!.diary.movimentos)map.set(i.data,(map.get(i.data)||0)+(i.tipo==='Deposito'?i.valor:-i.valor));
   for(const i of vault!.diary.dias)map.set(i.data,(map.get(i.data)||0)+i.resultadoFinanceiro);
   let total=0;const points=[...map].sort(([a],[b])=>a.localeCompare(b)).map(([data,v])=>({data,saldo:total+=v}));
-  c.append(node('p',`Saldo registrado: ${money(total)}. Inclui depósitos, saques e resultados, sem posições abertas.`));
+  const deposits=vault!.diary.movimentos.filter(i=>i.tipo==='Deposito').reduce((s,i)=>s+i.valor,0),withdrawals=vault!.diary.movimentos.filter(i=>i.tipo==='Saque').reduce((s,i)=>s+i.valor,0);
+  summaryCards([['Total Depósitos',money(deposits)],['Total Saques',money(withdrawals)],['Saldo registrado',money(total),total]],c);
+  c.append(node('p','Inclui depósitos, saques e resultados, sem posições abertas.'));
   const canvas=node('canvas');canvas.width=900;canvas.height=300;canvas.setAttribute('aria-label','Evolução do saldo Forex em USD');c.append(canvas);const ctx=canvas.getContext('2d');
-  if(ctx&&points.length){const min=Math.min(0,...points.map(i=>i.saldo)),max=Math.max(1,...points.map(i=>i.saldo));ctx.strokeStyle='#2878ad';ctx.lineWidth=3;ctx.beginPath();points.forEach((p,i)=>{const x=25+i*850/Math.max(1,points.length-1),y=275-(p.saldo-min)*250/(max-min);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();}
+  if(ctx&&points.length){const min=Math.min(0,...points.map(i=>i.saldo)),max=Math.max(1,...points.map(i=>i.saldo));ctx.strokeStyle='#3498db';ctx.lineWidth=3;ctx.beginPath();points.forEach((p,i)=>{const x=25+i*850/Math.max(1,points.length-1),y=275-(p.saldo-min)*250/(max-min);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();}
   table(['Data','Saldo'],points.map(i=>[i.data,money(i.saldo)]),c);
 }
 function backupView(){
@@ -216,4 +243,12 @@ function backupView(){
   c.append(node('p','Backups antigos podem conter texto aberto. Eles são lidos somente no navegador e criptografados antes de qualquer salvamento no Supabase. Registros de outras modalidades não são convertidos para USD.'));
 }
 
-login();
+async function start(){
+  shell('📈 Diário de Trading Forex');message('Carregando sessão...');
+  try{
+    const {data,error}=await supabase.auth.getSession();
+    if(error)throw error;
+    if(configured&&data.session)await vaultGate();else login();
+  }catch{login();message('Não foi possível restaurar a sessão. Entre novamente.');}
+}
+void start();

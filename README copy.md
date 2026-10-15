@@ -59,6 +59,8 @@ Faça o deploy após validar as configurações. Nenhum projeto remoto foi criad
 
 ## Primeiro uso e migração
 
+O frontend utiliza o layout de `opcoes-binarias.html`, com abas, cartões, formulários em grade e resumo Forex. O login fica no sessionStorage da aba e é renovado automaticamente, sem saída por inatividade. Recarregar preserva o login e pede apenas a senha do cofre. Sair limpa a sessão; fechar a aba ou o navegador encerra o armazenamento, conforme as configurações de restauração de abas do navegador. Novas abas independentes exigem seu próprio login.
+
 1. Entre com email/senha.
 2. Crie uma senha de cofre **diferente da senha de acesso**, com pelo menos 16 caracteres. Ela não é enviada ao Supabase e não tem recuperação.
 3. No sistema antigo, exporte o backup JSON. Na nova versão, use **Backup → Importar**. A conversão acontece no navegador; só o resultado cifrado é enviado ao banco.
