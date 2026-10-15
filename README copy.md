@@ -52,6 +52,12 @@ O `config.toml` descreve o ambiente local e a função; não pressupõe que conf
 
 ## Frontend Vercel
 
+### Aplicativo no celular
+
+O frontend é uma PWA: depois de publicar em HTTPS, abra o endereço no celular e use **Instalar no celular**. No Android/Chrome, escolha **Instalar aplicativo** ou **Adicionar à tela inicial** no menu. No iPhone/Safari, use **Compartilhar → Adicionar à Tela de Início** e ative **Abrir como App da Web**, quando disponível. Abra pelo ícone criado para usar em janela de aplicativo.
+
+O layout mobile tem navegação inferior, campos apropriados para toque e histórico em cartões. Usa as mesmas contas e dados da versão web; a revisão do diário continua oculta. É necessária conexão para entrar, carregar e salvar dados. O service worker não mantém cache de credenciais, cofre ou respostas de API; sem rede, uma nova abertura mostra um aviso. A sessão mantém as regras existentes de sessionStorage, sujeitas ao ciclo de vida e à restauração do navegador/app.
+
 Importe o repositório e selecione **Root Directory: forex-cloud**. O vercel.json define Vite, `npm run build` e saída `dist`.
 Configure apenas as duas variáveis públicas VITE no projeto Vercel. Antes de publicar, substitua `https://*.supabase.co` no CSP de vercel.json pela origem exata do seu Supabase. Informe a origem final da Vercel em ALLOWED_ORIGINS no backend. Não permita automaticamente todos os previews Vercel; autorize cada ambiente deliberadamente.
 

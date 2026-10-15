@@ -3,6 +3,7 @@ import { configured, supabase, readVault, writeVault, Vault, analyze } from './a
 import { createVault, unlockVault, validateEnvelope } from './crypto';
 import { emptyDiary, validateDiary, importLegacy, metrics, forexSummary, opening, limits, validateStops, type Diary, type TradeDay } from '../../shared/domain';
 import { reviewContext, reviewPrompt } from '../../shared/review';
+import { initializePwa, installWidget } from './pwa';
 
 const root = document.querySelector<HTMLElement>('#app')!;
 // Altere para true para reativar a revisão do diário na interface.
@@ -24,6 +25,8 @@ function shell(title:string) {
   root.className='container';
   root.replaceChildren(node('h1',title));
   const status=node('p','','status'); status.id='status'; status.setAttribute('role','status'); root.append(status);
+  const connection=node('p','Sem conexão. Reconecte-se para carregar ou salvar seus dados.','connection-status');connection.hidden=navigator.onLine;connection.setAttribute('role','status');root.append(connection);
+  const install=installWidget();if(install)root.append(install);
 }
 function card(title:string,parent:HTMLElement=content) { const el=node('section','','card'); el.append(node('h2',title)); parent.append(el); return el; }
 function button(text:string,handler:()=>void,parent:HTMLElement) { const b=node('button',text); b.type='button'; b.className=/Excluir|Remover/.test(text)?'btn-delete':text==='Editar'?'btn-edit':'btn-secundario'; b.addEventListener('click',handler); parent.append(b); return b; }
@@ -93,17 +96,19 @@ async function change(edit:(d:Diary)=>void) {
 function table(headers:string[],rows:(string|HTMLElement)[][],parent:HTMLElement){
   const wrapper=node('div','','table-responsive'),t=node('table'),head=node('tr');for(const h of headers)head.append(node('th',h));
   const thead=node('thead');thead.append(head);t.append(thead);const body=node('tbody');
-  for(const row of rows){const tr=node('tr');for(const value of row){const td=node('td');typeof value==='string'?td.textContent=value:td.append(value);tr.append(td);}body.append(tr);}
+  for(const row of rows){const tr=node('tr');row.forEach((value,index)=>{const td=node('td');td.dataset.label=headers[index];typeof value==='string'?td.textContent=value:td.append(value);tr.append(td);});body.append(tr);}
   t.append(body);wrapper.append(t);parent.append(wrapper);
   if(!rows.length)parent.append(node('p','Nenhum registro neste recorte.','empty-msg'));
 }
 function render(){
   if(!vault)return;shell('📈 Diário de Trading Forex');
+  root.classList.add('authenticated');
   const bar=node('header','','session-bar');bar.append(node('span','Cofre aberto · dados cifrados no armazenamento'));button('Sair',exit,bar);root.append(bar);
   const nav=node('nav','','tabs-nav');nav.setAttribute('aria-label','Seções do diário');root.append(nav);
   for(const [label,title] of [['Movimentações','💸 Depósitos e Saques'],['Diário','💱 Forex'],['Revisão do diário','📝 Revisão do diário'],['Evolução','📊 Evolução'],['Configurações','🏢 Cadastros e Configurações'],['Backup','💾 Backup e Dados']]){
     if(label==='Revisão do diário'&&!SHOW_DIARY_REVIEW)continue;
     const b=button(title,()=>{if(!busy){tab=label;editingDay=undefined;render();}},nav);b.className=`tab-btn${tab===label?' active':''}`;if(tab===label)b.setAttribute('aria-current','page');
+    b.replaceChildren(node('span',title,'nav-desktop'),node('span',title.split(' ')[0],'nav-icon'),node('span',label==='Movimentações'?'Movimentos':label==='Diário'?'Forex':label==='Configurações'?'Ajustes':label==='Revisão do diário'?'Revisão':label,'nav-mobile'));b.setAttribute('aria-label',title);
   }
   content=node('div','','tab-content active');content.id=tab==='Diário'?'abaForex':tab==='Evolução'?'abaEvolucao':'abaAtual';root.append(content);
   if(tab==='Diário')diaryView(editingDay);if(tab==='Movimentações')movementView();if(tab==='Evolução')evolutionView();
@@ -307,4 +312,5 @@ async function start(){
     if(configured&&data.session)await vaultGate();else login();
   }catch{login();message('Não foi possível restaurar a sessão. Entre novamente.');}
 }
+initializePwa();
 void start();
