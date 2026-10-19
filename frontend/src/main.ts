@@ -56,8 +56,9 @@ supabase.auth.onAuthStateChange((event)=>{ if(event==='SIGNED_OUT'){vault=null;p
 
 function login() {
   shell('Diário Forex privado');
+  root.classList.add('login-screen');
   if(!configured){message('Configure VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY no frontend antes de publicar. Consulte o README.');return;}
-  const c=card('Entrar'),f=node('form');c.append(f);
+  const c=card('Entrar'),f=node('form','','login-form');c.append(f);
   const email=input('E-mail','email','',f);email.autocomplete='username';
   const password=input('Senha de acesso','password','',f);password.autocomplete='current-password';
   submit('Entrar',f,async()=>{
@@ -67,7 +68,7 @@ function login() {
     loginFingerprint=await fingerprint(secret);
     await vaultGate();
   });
-  c.append(node('p','O acesso é criado pelo administrador do projeto. O login permanece ativo nesta aba até você sair ou fechar o navegador.'));
+  c.append(node('p','O acesso é criado pelo administrador do projeto. O login permanece ativo nesta aba até você sair ou fechar o navegador.','login-help'));
 }
 async function vaultGate() {
   const {data,error}=await supabase.auth.getUser();
