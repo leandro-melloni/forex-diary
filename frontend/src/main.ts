@@ -144,7 +144,7 @@ function diaryView(edit?:TradeDay){
   if(edit){button('Cancelar',()=>{editingDay=undefined;render();},c);return;}
   const filtersCard=card('Filtros Forex'),filters=node('div','','grid');filtersCard.append(filters);const filterBroker=brokers(filters,true),filterResult=select('Resultado do dia',[['','Todos'],['Win','Win'],['Loss','Loss'],['Zero','Zero a zero']],filters),month=input('Mês','month','',filters);month.required=false;
   const summary=card('Resumo Forex'),summaryArea=node('div');summary.append(summaryArea);
-  const history=card('Histórico diário Forex'),area=node('div');history.append(area);
+  const history=node('details','','collapsible-history'),area=node('div');history.append(node('summary','Histórico diário Forex'),area);content.append(history);
   const refresh=()=>{area.replaceChildren();summaryArea.replaceChildren();const selected=vault!.diary.dias.filter(i=>(!filterBroker.value||i.corretora===filterBroker.value)&&(!filterResult.value||(i.resultadoFinanceiro>0?'Win':i.resultadoFinanceiro<0?'Loss':'Zero')===filterResult.value)&&(!month.value||i.data.startsWith(month.value))).sort((a,b)=>b.data.localeCompare(a.data));const m=forexSummary(vault!.diary,selected),hint=m.variasCorretoras?' (selecione uma corretora)':'';
     const grid=summaryCards([
       ['Dias lançados',String(m.diasLancados)],['Dias com lucro',String(m.diasWin),0],['Dias com prejuízo',String(m.diasLoss),-1],['Dias no zero',String(m.diasZero)],['Total de operações',String(m.operacoes)],['Taxa de acerto',`${m.taxaAcerto.toFixed(1)}%`],['Resultado financeiro (USD)',money(m.resultado),m.resultado],
@@ -171,7 +171,7 @@ function movementView(){
   submit('Salvar movimento',f,()=>change(d=>{d.movimentos.push({id:crypto.randomUUID(),corretora:broker.value,data:date.value,tipo:type.value as 'Deposito'|'Saque',valor:Number(value.value)});}));
   const filters=card('Filtros'),grid=node('div','','grid');filters.append(grid);
   const filterBroker=brokers(grid,true),filterType=select('Tipo de operação',[['','Todos'],['Deposito','Depósito'],['Saque','Saque']],grid),month=input('Mês','month','',grid);month.required=false;
-  const summary=card('Resumo por Corretora'),history=node('details','','movement-history'),historyContent=node('div');
+  const summary=card('Resumo por Corretora'),history=node('details','','collapsible-history'),historyContent=node('div');
   history.append(node('summary','Histórico de movimentações'),historyContent);content.append(history);
   const refresh=()=>{
     summary.replaceChildren(node('h2','Resumo por Corretora'));historyContent.replaceChildren();

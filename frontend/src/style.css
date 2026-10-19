@@ -275,8 +275,8 @@
     canvas { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; background: white; }
     details { background: var(--card-bg); padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgb(0 0 0 / 5%); }
     summary { cursor: pointer; font-weight: bold; color: var(--primary); }
-    .movement-history > summary { font-size: 1.5rem; }
-    .movement-history[open] > summary { margin-bottom: 16px; }
+    .collapsible-history > summary { font-size: 1.5rem; }
+    .collapsible-history[open] > summary { margin-bottom: 16px; }
     pre { font: inherit; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
     :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
     @media (max-width: 900px) {
@@ -286,7 +286,7 @@
       body { padding: 10px; }
       h1 { font-size: 1.55rem; }
       h2 { font-size: 1.2rem; }
-      .movement-history > summary { font-size: 1.2rem; }
+      .collapsible-history > summary { font-size: 1.2rem; }
       .tabs-nav { flex-wrap: nowrap; overflow-x: auto; gap: 6px; }
       .tab-btn { padding: 10px 14px; white-space: nowrap; }
       .card { padding: 14px; }
