@@ -171,15 +171,16 @@ function movementView(){
   submit('Salvar movimento',f,()=>change(d=>{d.movimentos.push({id:crypto.randomUUID(),corretora:broker.value,data:date.value,tipo:type.value as 'Deposito'|'Saque',valor:Number(value.value)});}));
   const filters=card('Filtros'),grid=node('div','','grid');filters.append(grid);
   const filterBroker=brokers(grid,true),filterType=select('Tipo de operação',[['','Todos'],['Deposito','Depósito'],['Saque','Saque']],grid),month=input('Mês','month','',grid);month.required=false;
-  const summary=card('Resumo por Corretora'),history=card('Histórico de movimentações');
+  const summary=card('Resumo por Corretora'),history=node('details','','movement-history'),historyContent=node('div');
+  history.append(node('summary','Histórico de movimentações'),historyContent);content.append(history);
   const refresh=()=>{
-    summary.replaceChildren(node('h2','Resumo por Corretora'));history.replaceChildren(node('h2','Histórico de movimentações'));
+    summary.replaceChildren(node('h2','Resumo por Corretora'));historyContent.replaceChildren();
     const selected=vault!.diary.movimentos.filter(i=>(!filterBroker.value||i.corretora===filterBroker.value)&&(!filterType.value||i.tipo===filterType.value)&&(!month.value||i.data.startsWith(month.value)));
     table(['Corretora','Total Depósitos','Total Saques','Saldo de movimentos'],vault!.diary.corretoras.filter(n=>!filterBroker.value||n===filterBroker.value).map(n=>{
       const items=selected.filter(i=>i.corretora===n),deposits=items.filter(i=>i.tipo==='Deposito').reduce((s,i)=>s+i.valor,0),withdrawals=items.filter(i=>i.tipo==='Saque').reduce((s,i)=>s+i.valor,0);
       return[n,money(deposits),money(withdrawals),money(deposits-withdrawals)];
     }),summary);
-    table(['Data','Corretora','Tipo','Valor','Ação'],selected.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(i=>{const a=node('div');button('Excluir',()=>{if(confirm('Excluir este movimento? Isso recalculará os saldos de abertura.'))void run(()=>change(d=>{d.movimentos=d.movimentos.filter(v=>v.id!==i.id);}));},a);return[i.data,i.corretora,i.tipo==='Deposito'?'Depósito':'Saque',node('span',money(i.valor),i.tipo==='Deposito'?'val-positivo':'val-negativo'),a];}),history);
+    table(['Data','Corretora','Tipo','Valor','Ação'],selected.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(i=>{const a=node('div');button('Excluir',()=>{if(confirm('Excluir este movimento? Isso recalculará os saldos de abertura.'))void run(()=>change(d=>{d.movimentos=d.movimentos.filter(v=>v.id!==i.id);}));},a);return[i.data,i.corretora,i.tipo==='Deposito'?'Depósito':'Saque',node('span',money(i.valor),i.tipo==='Deposito'?'val-positivo':'val-negativo'),a];}),historyContent);
   };
   for(const control of [filterBroker,filterType,month])control.addEventListener('change',refresh);
   button('Limpar filtros',()=>{filterBroker.value='';filterType.value='';month.value='';refresh();},grid);refresh();
