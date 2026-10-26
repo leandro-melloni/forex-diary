@@ -2,8 +2,10 @@ export type TradeDay = { id: string; corretora: string; data: string; operacoes:
 export type Movement = { id: string; corretora: string; data: string; tipo: 'Deposito' | 'Saque'; valor: number };
 export type Stops = { unidade: 'percentual' | 'usd'; loss: number; win: number; configuradoEm: string };
 export type Review = { id: string; data: string; contexto: string; texto: string; modelo?: string };
-export type Diary = { version: 1; corretoras: string[]; dias: TradeDay[]; movimentos: Movement[]; stops: Stops | null; revisoes: Review[] };
-export const emptyDiary = (): Diary => ({ version: 1, corretoras: [], dias: [], movimentos: [], stops: null, revisoes: [] });
+export type BinaryOptionsDiary = { corretoras: string[]; dias: TradeDay[]; movimentos: Movement[]; stops?: Stops | null };
+export type Diary = { version: 1; corretoras: string[]; dias: TradeDay[]; movimentos: Movement[]; stops: Stops | null; revisoes: Review[]; opcoesBinarias?: BinaryOptionsDiary };
+export const emptyDiary = (): Diary => ({ version: 1, corretoras: [], dias: [], movimentos: [], stops: null, revisoes: [], opcoesBinarias: { corretoras: [], dias: [], movimentos: [], stops: null } });
+export const binaryOptions = (diary: Diary): BinaryOptionsDiary => diary.opcoesBinarias ?? { corretoras: [], dias: [], movimentos: [], stops: null };
 const record = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x);
 const text = (x: unknown, max: number): x is string => typeof x === 'string' && x.length <= max;
 const date = (x: unknown): x is string => text(x, 10) && /^\d{4}-\d{2}-\d{2}$/.test(x) && new Date(x).toISOString().slice(0, 10) === x;
@@ -18,6 +20,13 @@ export function validateDays(x: unknown): asserts x is TradeDay[] {
 export function validateDiary(x: unknown): asserts x is Diary {
   if (!record(x) || x.version !== 1 || !Array.isArray(x.corretoras) || x.corretoras.length > 200 || !x.corretoras.every(v => text(v, 200) && v.trim()) || !Array.isArray(x.movimentos) || x.movimentos.length > 5000 || !Array.isArray(x.revisoes) || x.revisoes.length > 20) throw new Error('Formato de diário inválido.');
   validateDays(x.dias);
+  if (x.opcoesBinarias !== undefined) {
+    const ob = x.opcoesBinarias;
+    if (!record(ob) || !Array.isArray(ob.corretoras) || ob.corretoras.length > 200 || !ob.corretoras.every(v => text(v, 200) && v.trim()) || !Array.isArray(ob.movimentos) || ob.movimentos.length > 5000) throw new Error('Diário de Opções Binárias inválido.');
+    validateDays(ob.dias);
+    if (ob.stops != null) { validateStops(ob.stops); if (ob.stops.unidade !== 'percentual') throw new Error('Limites de OB devem ser percentuais.'); }
+    for (const i of ob.movimentos) if (!record(i) || !text(i.id,100) || !text(i.corretora,200) || !date(i.data) || !['Deposito','Saque'].includes(String(i.tipo)) || !finite(i.valor) || i.valor <= 0) throw new Error('Movimento de Opções Binárias inválido.');
+  }
   for (const i of x.movimentos) if (!record(i) || !text(i.id,100) || !text(i.corretora,200) || !date(i.data) || !['Deposito','Saque'].includes(String(i.tipo)) || !finite(i.valor) || i.valor <= 0) throw new Error('Movimento inválido.');
   for (const i of x.revisoes) if (!record(i) || !text(i.id,100) || !text(i.data,50) || !text(i.contexto,300000) || !text(i.texto,100000) || (i.modelo !== undefined && !text(i.modelo,100))) throw new Error('Revisão inválida.');
   if (x.stops !== null) validateStops(x.stops);
@@ -25,6 +34,15 @@ export function validateDiary(x: unknown): asserts x is Diary {
 export const round = (n: number) => Math.round(n * 100) / 100;
 export function opening(d: Diary, broker: string, day: string): number {
   return round(d.movimentos.filter(i => i.corretora === broker && i.data <= day).reduce((s,i) => s + (i.tipo === 'Deposito' ? i.valor : -i.valor), 0) + d.dias.filter(i => i.corretora === broker && i.data < day).reduce((s,i) => s + i.resultadoFinanceiro,0));
+}
+export function binaryOptionsOpening(d: Diary, broker: string, day: string): number {
+  const ob=binaryOptions(d);
+  return round(ob.movimentos.filter(i => i.corretora === broker && i.data <= day).reduce((s,i) => s + (i.tipo === 'Deposito' ? i.valor : -i.valor), 0) + ob.dias.filter(i => i.corretora === broker && i.data < day).reduce((s,i) => s + i.resultadoFinanceiro,0));
+}
+export function binaryOptionsLimits(d: Diary, broker: string, day: string) {
+  const saldoBase=binaryOptionsOpening(d,broker,day), stops=binaryOptions(d).stops;
+  if (!stops || saldoBase <= 0) return null;
+  return {saldoBase,lossBRL:round(saldoBase*stops.loss/100),winBRL:round(saldoBase*stops.win/100)};
 }
 export function limits(d: Diary, broker: string, day: string) {
   const saldoBase = opening(d, broker, day);

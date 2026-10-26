@@ -1,5 +1,5 @@
 import {it,expect} from 'vitest';
-import { emptyDiary,importLegacy,opening,limits,metrics,validateDiary } from '../shared/domain';
+import { emptyDiary,importLegacy,opening,limits,metrics,validateDiary,binaryOptionsOpening,binaryOptionsLimits } from '../shared/domain';
 import { isPublicSupabaseKey } from '../shared/public-config';
 it('bloqueia chaves privadas no frontend',()=>{
   expect(isPublicSupabaseKey('sb_secret_nao-publicar')).toBe(false);
@@ -24,3 +24,13 @@ it('rejeita backups inválidos em vez de executar conteúdo',()=>{
   const d=emptyDiary();d.dias=[{id:'a',corretora:'A',data:'2026-10-01',operacoes:1,wins:2,losses:1,resultadoFinanceiro:1,observacao:'',contexto:''}];
   expect(()=>validateDiary(d)).toThrow();
 });
+it('separa o saldo e os stops de OB em reais por corretora',()=>{
+  const d=emptyDiary();d.corretoras=['FOREX'];d.movimentos=[{id:'f',corretora:'FOREX',data:'2026-10-01',tipo:'Deposito',valor:1000}];
+  d.opcoesBinarias={corretoras:['OB A','OB B'],movimentos:[{id:'a',corretora:'OB A',data:'2026-10-01',tipo:'Deposito',valor:500},{id:'b',corretora:'OB B',data:'2026-10-01',tipo:'Deposito',valor:900},{id:'s',corretora:'OB A',data:'2026-10-02',tipo:'Saque',valor:50}],dias:[{id:'d',corretora:'OB A',data:'2026-10-01',operacoes:1,wins:1,losses:0,resultadoFinanceiro:100,observacao:'',contexto:''}],stops:{unidade:'percentual',loss:5,win:10,configuradoEm:'2026-10-01'}};
+  validateDiary(d);
+  expect(binaryOptionsOpening(d,'OB A','2026-10-02')).toBe(550);
+  expect(binaryOptionsLimits(d,'OB A','2026-10-02')).toMatchObject({saldoBase:550,lossBRL:27.5,winBRL:55});
+  expect(binaryOptionsOpening(d,'OB B','2026-10-02')).toBe(900);
+  expect(opening(d,'FOREX','2026-10-02')).toBe(1000);
+});
+it('aceita cofre anterior sem dados de OB',()=>{const d=emptyDiary();delete d.opcoesBinarias;expect(()=>validateDiary(d)).not.toThrow();expect(binaryOptionsOpening(d,'OB','2026-10-01')).toBe(0);});

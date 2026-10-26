@@ -1,7 +1,7 @@
 import './style.css';
 import { configured, supabase, readVault, writeVault, Vault, analyze } from './api';
 import { createVault, unlockVault, validateEnvelope } from './crypto';
-import { emptyDiary, validateDiary, importLegacy, metrics, forexSummary, opening, limits, validateStops, type Diary, type TradeDay } from '../../shared/domain';
+import { emptyDiary, validateDiary, importLegacy, metrics, forexSummary, opening, limits, validateStops, binaryOptions, binaryOptionsOpening, binaryOptionsLimits, type Diary, type TradeDay } from '../../shared/domain';
 import { reviewContext, reviewPrompt } from '../../shared/review';
 import { initializePwa, installWidget } from './pwa';
 
@@ -13,9 +13,12 @@ let busy = false, tab = 'Diário';
 let content: HTMLElement = root;
 let pendingReview: { contexto:string; texto:string; modelo:string; id:string; data:string } | null = null;
 let editingDay: TradeDay | undefined;
+let tradingMode: 'Forex' | 'Opções Binárias' = 'Forex';
+let editingBinaryDay: TradeDay | undefined;
 let loginFingerprint: string | null = null;
 async function fingerprint(value:string) { return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).join(','); }
 const money = (v:number) => v.toLocaleString('pt-BR',{style:'currency',currency:'USD'});
+const reais = (v:number) => v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 function node<K extends keyof HTMLElementTagNameMap>(tag:K,text='',className='') {
   const el=document.createElement(tag); el.textContent=text; el.className=className; return el;
 }
@@ -111,11 +114,37 @@ function render(){
     const b=button(title,()=>{if(!busy){tab=label;editingDay=undefined;render();}},nav);b.className=`tab-btn${tab===label?' active':''}`;if(tab===label)b.setAttribute('aria-current','page');
     b.replaceChildren(node('span',title,'nav-desktop'),node('span',title.split(' ')[0],'nav-icon'),node('span',label==='Movimentações'?'Movimentos':label==='Diário'?'Diário de trading':label==='Configurações'?'Ajustes':label==='Revisão do diário'?'Revisão':label,'nav-mobile'));b.setAttribute('aria-label',title);
   }
-  content=node('div','','tab-content active');content.id=tab==='Diário'?'abaForex':tab==='Evolução'?'abaEvolucao':'abaAtual';root.append(content);
-  if(tab==='Diário')diaryView(editingDay);if(tab==='Movimentações')movementView();if(tab==='Evolução')evolutionView();
+  content=node('div','','tab-content active');content.id=tab==='Diário'&&tradingMode==='Forex'?'abaForex':tab==='Evolução'?'abaEvolucao':'abaAtual';root.append(content);
+  if(tab==='Diário'){
+    const modes=node('nav','','tabs-nav');modes.setAttribute('aria-label','Modalidades de trading');content.append(modes);
+    for(const mode of ['Forex','Opções Binárias'] as const){const b=button(mode,()=>{tradingMode=mode;editingDay=undefined;editingBinaryDay=undefined;render();},modes);b.className=`tab-btn${tradingMode===mode?' active':''}`;if(tradingMode===mode)b.setAttribute('aria-current','page');}
+    if(tradingMode==='Forex')diaryView(editingDay);else binaryOptionsView();
+  }
+  if(tab==='Movimentações')movementView();if(tab==='Evolução')evolutionView();
   if(SHOW_DIARY_REVIEW&&tab==='Revisão do diário')reviewView();if(tab==='Configurações')settingsView();if(tab==='Backup')backupView();
 }
 function brokers(parent:HTMLElement,all=false){return select('Corretora',[...(all?[['','Todas'] as [string,string]]:[]),...vault!.diary.corretoras.map(n=>[n,n] as [string,string])],parent);}
+function binaryOptionsView(){
+  const ob=binaryOptions(vault!.diary),edit=editingBinaryDay,c=card(edit?'Editar lançamento de OB':'Novo lançamento de Opções Binárias');
+  if(!ob.corretoras.length){c.append(node('p','Cadastre uma corretora de Opções Binárias em Configurações para começar.'));return;}
+  const f=node('form','','grid');c.append(f);const broker=select('Corretora',ob.corretoras.map(n=>[n,n]),f);if(edit)broker.value=edit.corretora;
+  const date=input('Data','date',edit?.data||new Date().toLocaleDateString('en-CA'),f),ops=input('Operações','number',String(edit?.operacoes??1),f),wins=input('Wins','number',String(edit?.wins??0),f),losses=input('Losses','number',String(edit?.losses??0),f);
+  for(const i of [ops,wins,losses]){i.min=i===ops?'1':'0';i.step='1';}
+  const result=input('Resultado financeiro líquido (R$)','number',edit?String(edit.resultadoFinanceiro):'',f);result.step='.01';
+  const notes=textarea('Observações',edit?.observacao||'',f),context=textarea('Contexto e lições',edit?.contexto||'',f),panel=node('p','','notice');c.append(panel);
+  const update=()=>{const base=binaryOptionsOpening(vault!.diary,broker.value,date.value),limit=binaryOptionsLimits(vault!.diary,broker.value,date.value);if(!limit){panel.textContent=`Saldo de abertura: ${reais(base)}. Configure os stops de OB e registre um depósito para calcular os limites.`;return;}
+    const net=Math.round((ob.dias.filter(i=>i.corretora===broker.value&&i.data===date.value&&i.id!==edit?.id).reduce((s,i)=>s+i.resultadoFinanceiro,0)+(Number(result.value)||0))*100)/100;
+    panel.textContent=`Saldo de abertura: ${reais(base)} · Stop Loss: ${reais(limit.lossBRL)} · Stop Win: ${reais(limit.winBRL)} · Resultado (prévia): ${reais(net)}. `+(net<=-limit.lossBRL?'STOP LOSS ATINGIDO: encerre a sessão.':net>=limit.winBRL?'STOP WIN ATINGIDO: encerre a sessão.':`Margem até a perda diária: ${reais(Math.max(0,limit.lossBRL+net))}; falta para o Stop Win: ${reais(Math.max(0,limit.winBRL-net))}.`);
+  };for(const el of [broker,date,result])el.addEventListener('input',update);update();
+  submit('Salvar dia de OB',f,()=>change(d=>{if(binaryOptionsOpening(d,broker.value,date.value)<=0)throw new Error('Registre um depósito e confira o saldo de abertura antes de lançar resultados.');const item:TradeDay={id:edit?.id||crypto.randomUUID(),corretora:broker.value,data:date.value,operacoes:Number(ops.value),wins:Number(wins.value),losses:Number(losses.value),resultadoFinanceiro:Number(result.value),observacao:notes.value.trim(),contexto:context.value.trim()};if(!d.opcoesBinarias)d.opcoesBinarias={corretoras:[],dias:[],movimentos:[]};if(edit)d.opcoesBinarias.dias=d.opcoesBinarias.dias.map(i=>i.id===edit.id?item:i);else d.opcoesBinarias.dias.push(item);editingBinaryDay=undefined;}));
+  if(edit){button('Cancelar',()=>{editingBinaryDay=undefined;render();},c);return;}
+  const filters=card('Filtros de OB'),controls=node('div','','grid');filters.append(controls);const filterBroker=select('Corretora',[['','Todas'],...ob.corretoras.map(n=>[n,n] as [string,string])],controls),filterResult=select('Resultado do dia',[['','Todos'],['Win','Win'],['Loss','Loss'],['Zero','Zero a zero']],controls),month=input('Mês','month','',controls);month.required=false;
+  const summary=card('Resumo de Opções Binárias'),summaryArea=node('div');summary.append(summaryArea);const history=node('details','','collapsible-history'),area=node('div');history.append(node('summary','Histórico diário de OB'),area);content.append(history);
+  const refresh=()=>{summaryArea.replaceChildren();area.replaceChildren();const selected=ob.dias.filter(i=>(!filterBroker.value||i.corretora===filterBroker.value)&&(!filterResult.value||(i.resultadoFinanceiro>0?'Win':i.resultadoFinanceiro<0?'Loss':'Zero')===filterResult.value)&&(!month.value||i.data.startsWith(month.value))).sort((a,b)=>b.data.localeCompare(a.data)),m=forexSummary({...vault!.diary,dias:ob.dias,movimentos:ob.movimentos},selected),hint=m.variasCorretoras?' (selecione uma corretora)':'';
+    summaryCards([['Dias lançados',String(m.diasLancados)],['Dias com lucro',String(m.diasWin)],['Dias com prejuízo',String(m.diasLoss)],['Dias no zero',String(m.diasZero)],['Total de operações',String(m.operacoes)],['Taxa de acerto',`${m.taxaAcerto.toFixed(1)}%`],['Resultado financeiro (BRL)',reais(m.resultado),m.resultado],[`Ganho/perda no filtro${hint}`,m.percentualAcumulado===null?'—':`${m.percentualAcumulado.toFixed(2)}%`,m.percentualAcumulado??0],[`Média diária${hint}`,m.percentualMedio===null?'—':`${m.percentualMedio.toFixed(2)}%`,m.percentualMedio??0]],summaryArea);
+    table(['Data','Corretora','Operações','Wins/Losses','Resultado','Observações','Ações'],selected.map(i=>{const actions=node('div','','actions');button('Editar',()=>{editingBinaryDay=i;render();},actions);button('Excluir',()=>{if(confirm('Excluir este lançamento?'))void run(()=>change(d=>{d.opcoesBinarias!.dias=d.opcoesBinarias!.dias.filter(v=>v.id!==i.id);}));},actions);return[i.data,i.corretora,String(i.operacoes),`${i.wins}/${i.losses}`,node('span',reais(i.resultadoFinanceiro),i.resultadoFinanceiro<0?'val-negativo':'val-positivo'),i.observacao,actions];}),area);
+  };for(const el of [filterBroker,filterResult,month])el.addEventListener('change',refresh);button('Limpar filtros',()=>{filterBroker.value='';filterResult.value='';month.value='';refresh();},controls);refresh();
+}
 function diaryView(edit?:TradeDay){
   const c=card(edit?'Editar lançamento':'Novo lançamento Forex');
   if(!vault!.diary.corretoras.length){c.append(node('p','Cadastre uma corretora em Configurações para começar.'));return;}
@@ -165,6 +194,9 @@ function summaryCards(items:[string,string,number?,string?][],parent:HTMLElement
   return grid;
 }
 function movementView(){
+  const modes=node('nav','','tabs-nav');modes.setAttribute('aria-label','Modalidades de movimentações');content.append(modes);
+  for(const mode of ['Forex','Opções Binárias'] as const){const b=button(mode,()=>{tradingMode=mode;render();},modes);b.className=`tab-btn${tradingMode===mode?' active':''}`;if(tradingMode===mode)b.setAttribute('aria-current','page');}
+  if(tradingMode==='Opções Binárias'){binaryOptionsMovementView();return;}
   const c=card('Novo lançamento · Depósitos e Saques'),f=node('form','','grid');c.append(f);
   if(!vault!.diary.corretoras.length){c.append(node('p','Cadastre uma corretora em Configurações.'));return;}
   const broker=brokers(f),type=select('Tipo',[['Deposito','Depósito'],['Saque','Saque']],f),date=input('Data','date',new Date().toLocaleDateString('en-CA'),f),value=input('Valor (US$)','number','',f);value.min='.01';value.step='.01';
@@ -185,11 +217,25 @@ function movementView(){
   for(const control of [filterBroker,filterType,month])control.addEventListener('change',refresh);
   button('Limpar filtros',()=>{filterBroker.value='';filterType.value='';month.value='';refresh();},grid);refresh();
 }
+function binaryOptionsMovementView(){
+  const ob=binaryOptions(vault!.diary),c=card('Novo lançamento · Depósitos e Saques de OB');
+  if(!ob.corretoras.length){c.append(node('p','Cadastre uma corretora de Opções Binárias em Configurações.'));return;}
+  const f=node('form','','grid');c.append(f);const broker=select('Corretora',ob.corretoras.map(n=>[n,n]),f),type=select('Tipo',[['Deposito','Depósito'],['Saque','Saque']],f),date=input('Data','date',new Date().toLocaleDateString('en-CA'),f),value=input('Valor (R$)','number','',f);value.min='.01';value.step='.01';
+  submit('Salvar movimento de OB',f,()=>change(d=>{if(!d.opcoesBinarias)d.opcoesBinarias={corretoras:[],dias:[],movimentos:[]};d.opcoesBinarias.movimentos.push({id:crypto.randomUUID(),corretora:broker.value,data:date.value,tipo:type.value as 'Deposito'|'Saque',valor:Number(value.value)});}));
+  const summary=card('Resumo por Corretora de OB');table(['Corretora','Total Depósitos','Total Saques','Saldo de movimentos'],ob.corretoras.map(n=>{const items=ob.movimentos.filter(i=>i.corretora===n),deposits=items.filter(i=>i.tipo==='Deposito').reduce((s,i)=>s+i.valor,0),withdrawals=items.filter(i=>i.tipo==='Saque').reduce((s,i)=>s+i.valor,0);return[n,reais(deposits),reais(withdrawals),reais(deposits-withdrawals)];}),summary);
+  const history=node('details','','collapsible-history'),area=node('div');history.append(node('summary','Histórico de movimentações de OB'),area);content.append(history);
+  table(['Data','Corretora','Tipo','Valor','Ação'],ob.movimentos.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(i=>{const actions=node('div');button('Excluir',()=>{if(confirm('Excluir este movimento? Isso recalculará os saldos de abertura.'))void run(()=>change(d=>{d.opcoesBinarias!.movimentos=d.opcoesBinarias!.movimentos.filter(v=>v.id!==i.id);}));},actions);return[i.data,i.corretora,i.tipo==='Deposito'?'Depósito':'Saque',reais(i.valor),actions];}),area);
+}
 function settingsView(){
   stopsView();
   const b=card('Corretoras Forex'),bf=node('form','','grid');b.append(bf);const name=input('Nome da corretora','text','',bf);name.maxLength=200;
   submit('Cadastrar',bf,()=>change(d=>{const n=name.value.trim().toUpperCase();if(!n||d.corretoras.includes(n))throw new Error('Informe uma corretora nova.');d.corretoras.push(n);}));
   for(const n of vault!.diary.corretoras){const p=node('p',`${n} · USD`);button('Remover',()=>void run(()=>change(d=>{if(d.dias.some(i=>i.corretora===n)||d.movimentos.some(i=>i.corretora===n))throw new Error('A corretora possui registros.');d.corretoras=d.corretoras.filter(v=>v!==n);})),p);b.append(p);}
+  const ob=card('Corretoras de Opções Binárias'),form=node('form','','grid');ob.append(form);const obName=input('Nome da corretora','text','',form);obName.maxLength=200;
+  submit('Cadastrar corretora de OB',form,()=>change(d=>{const name=obName.value.trim().toUpperCase();const list=binaryOptions(d).corretoras;if(!name||list.includes(name))throw new Error('Informe uma corretora de OB nova.');if(!d.opcoesBinarias)d.opcoesBinarias={corretoras:[],dias:[],movimentos:[]};d.opcoesBinarias.corretoras.push(name);}));
+  for(const name of binaryOptions(vault!.diary).corretoras){const row=node('p',`${name} · BRL (R$)`);button('Remover',()=>void run(()=>change(d=>{const entries=binaryOptions(d);if(entries.dias.some(i=>i.corretora===name)||entries.movimentos.some(i=>i.corretora===name))throw new Error('A corretora possui registros.');d.opcoesBinarias!.corretoras=entries.corretoras.filter(v=>v!==name);})),row);ob.append(row);}
+  const stops=card('Stop Loss e Stop Win de Opções Binárias'),sf=node('form','','grid');stops.append(sf);const configured=binaryOptions(vault!.diary).stops,loss=input('Stop Loss diário (% do saldo de abertura)','number',String(configured?.loss??''),sf),win=input('Stop Win diário (% do saldo de abertura)','number',String(configured?.win??''),sf);for(const i of [loss,win]){i.min='.01';i.max='100';i.step='.01';}
+  submit('Salvar limites de OB',sf,()=>change(d=>{const next={unidade:'percentual' as const,loss:Number(loss.value),win:Number(win.value),configuradoEm:new Date().toISOString()};validateStops(next);if(!d.opcoesBinarias)d.opcoesBinarias={corretoras:[],dias:[],movimentos:[]};d.opcoesBinarias.stops=next;}));
 }
 function stopsView(){
   const c=card('Configuração geral de Stop Loss e Stop Win'),f=node('form','','grid');c.append(f);
@@ -277,16 +323,19 @@ async function persistReview(){
   catch(e){render();throw e;}
 }
 function evolutionView(){
-  const c=card('Evolução do saldo registrado'),map=new Map<string,number>();
-  for(const i of vault!.diary.movimentos)map.set(i.data,(map.get(i.data)||0)+(i.tipo==='Deposito'?i.valor:-i.valor));
-  for(const i of vault!.diary.dias)map.set(i.data,(map.get(i.data)||0)+i.resultadoFinanceiro);
+  const modes=node('nav','','tabs-nav');modes.setAttribute('aria-label','Modalidades da evolução');content.append(modes);
+  for(const mode of ['Forex','Opções Binárias'] as const){const b=button(mode,()=>{tradingMode=mode;render();},modes);b.className=`tab-btn${tradingMode===mode?' active':''}`;if(tradingMode===mode)b.setAttribute('aria-current','page');}
+  const isOb=tradingMode==='Opções Binárias',diary=vault!.diary,items=isOb?binaryOptions(diary):diary,format=isOb?reais:money;
+  const c=card(`Evolução do saldo registrado · ${tradingMode}`),map=new Map<string,number>();
+  for(const i of items.movimentos)map.set(i.data,(map.get(i.data)||0)+(i.tipo==='Deposito'?i.valor:-i.valor));
+  for(const i of items.dias)map.set(i.data,(map.get(i.data)||0)+i.resultadoFinanceiro);
   let total=0;const points=[...map].sort(([a],[b])=>a.localeCompare(b)).map(([data,v])=>({data,saldo:total+=v}));
-  const deposits=vault!.diary.movimentos.filter(i=>i.tipo==='Deposito').reduce((s,i)=>s+i.valor,0),withdrawals=vault!.diary.movimentos.filter(i=>i.tipo==='Saque').reduce((s,i)=>s+i.valor,0);
-  summaryCards([['Total Depósitos',money(deposits)],['Total Saques',money(withdrawals)],['Saldo registrado',money(total),total]],c);
+  const deposits=items.movimentos.filter(i=>i.tipo==='Deposito').reduce((s,i)=>s+i.valor,0),withdrawals=items.movimentos.filter(i=>i.tipo==='Saque').reduce((s,i)=>s+i.valor,0);
+  summaryCards([['Total Depósitos',format(deposits)],['Total Saques',format(withdrawals)],['Saldo registrado',format(total),total]],c);
   c.append(node('p','Inclui depósitos, saques e resultados, sem posições abertas.'));
-  const canvas=node('canvas');canvas.width=900;canvas.height=300;canvas.setAttribute('aria-label','Evolução do saldo Forex em USD');c.append(canvas);const ctx=canvas.getContext('2d');
+  const canvas=node('canvas');canvas.width=900;canvas.height=300;canvas.setAttribute('aria-label',`Evolução do saldo ${tradingMode} em ${isOb?'BRL':'USD'}`);c.append(canvas);const ctx=canvas.getContext('2d');
   if(ctx&&points.length){const min=Math.min(0,...points.map(i=>i.saldo)),max=Math.max(1,...points.map(i=>i.saldo));ctx.strokeStyle='#3498db';ctx.lineWidth=3;ctx.beginPath();points.forEach((p,i)=>{const x=25+i*850/Math.max(1,points.length-1),y=275-(p.saldo-min)*250/(max-min);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();}
-  table(['Data','Saldo'],points.map(i=>[i.data,money(i.saldo)]),c);
+  table(['Data','Saldo'],points.map(i=>[i.data,format(i.saldo)]),c);
 }
 function backupView(){
   const c=card('Backup criptografado');c.append(node('p','O backup é cifrado e depende da senha do cofre de origem. Guarde os dois separadamente. Não exportamos os registros em texto aberto.'));
