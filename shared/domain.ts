@@ -32,8 +32,16 @@ export function validateDiary(x: unknown): asserts x is Diary {
   if (x.stops !== null) validateStops(x.stops);
 }
 export const round = (n: number) => Math.round(n * 100) / 100;
+export function openingDetails(d: Diary, broker: string, day: string) {
+  const movements = d.movimentos.filter(i => i.corretora === broker && i.data <= day);
+  const deposits = round(movements.filter(i => i.tipo === 'Deposito').reduce((s,i) => s + i.valor, 0));
+  const withdrawals = round(movements.filter(i => i.tipo === 'Saque').reduce((s,i) => s + i.valor, 0));
+  const previousResults = round(d.dias.filter(i => i.corretora === broker && i.data < day).reduce((s,i) => s + i.resultadoFinanceiro, 0));
+  const laterDeposits = d.movimentos.filter(i => i.corretora === broker && i.tipo === 'Deposito' && i.data > day).length;
+  return { deposits, withdrawals, previousResults, laterDeposits, balance: round(deposits - withdrawals + previousResults) };
+}
 export function opening(d: Diary, broker: string, day: string): number {
-  return round(d.movimentos.filter(i => i.corretora === broker && i.data <= day).reduce((s,i) => s + (i.tipo === 'Deposito' ? i.valor : -i.valor), 0) + d.dias.filter(i => i.corretora === broker && i.data < day).reduce((s,i) => s + i.resultadoFinanceiro,0));
+  return openingDetails(d, broker, day).balance;
 }
 export function binaryOptionsOpening(d: Diary, broker: string, day: string): number {
   const ob=binaryOptions(d);
@@ -45,7 +53,8 @@ export function binaryOptionsLimits(d: Diary, broker: string, day: string) {
   return {saldoBase,lossBRL:round(saldoBase*stops.loss/100),winBRL:round(saldoBase*stops.win/100)};
 }
 export function limits(d: Diary, broker: string, day: string) {
-  const saldoBase = opening(d, broker, day);
+  const details = openingDetails(d, broker, day);
+  const saldoBase = round(details.deposits + details.previousResults);
   if (!d.stops || saldoBase <= 0) return null;
   const { unidade, loss, win } = d.stops;
   return { saldoBase, lossUSD: round(unidade === 'percentual' ? saldoBase * loss / 100 : loss), winUSD: round(unidade === 'percentual' ? saldoBase * win / 100 : win) };

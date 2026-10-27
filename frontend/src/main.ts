@@ -1,7 +1,7 @@
 import './style.css';
 import { configured, supabase, readVault, writeVault, Vault, analyze } from './api';
 import { createVault, unlockVault, validateEnvelope } from './crypto';
-import { emptyDiary, validateDiary, importLegacy, metrics, forexSummary, opening, limits, validateStops, binaryOptions, binaryOptionsOpening, binaryOptionsLimits, type Diary, type TradeDay } from '../../shared/domain';
+import { emptyDiary, validateDiary, importLegacy, metrics, forexSummary, opening, openingDetails, limits, validateStops, binaryOptions, binaryOptionsOpening, binaryOptionsLimits, type Diary, type TradeDay } from '../../shared/domain';
 import { reviewContext, reviewPrompt } from '../../shared/review';
 import { initializePwa, installWidget } from './pwa';
 
@@ -157,11 +157,13 @@ function diaryView(edit?:TradeDay){
   const notes=textarea('Observações',edit?.observacao||'',f),context=textarea('Contexto e lições',edit?.contexto||'',f);
   const panel=node('p','','notice');c.append(panel);
   const update=()=>{
-    const d=vault!.diary,l=limits(d,broker.value,date.value),base=opening(d,broker.value,date.value);
-    if(!l){panel.textContent=`Saldo de abertura: ${money(base)}. Configure os stops gerais e registre um depósito para calcular os limites.`;return;}
+    const d=vault!.diary,l=limits(d,broker.value,date.value),details=openingDetails(d,broker.value,date.value),base=details.balance;
+    const breakdown=`Saldo líquido: depósitos até ${date.value}: ${money(details.deposits)} − saques: ${money(details.withdrawals)} + resultados anteriores: ${money(details.previousResults)}. Os saques não reduzem a base dos stops.`;
+    const warning=details.laterDeposits?` Há ${details.laterDeposits} depósito(s) dessa corretora com data posterior; confira a data em Movimentações.`:'';
+    if(!l){panel.textContent=`Saldo de abertura: ${money(base)}. ${breakdown}${warning} Configure os stops gerais e registre um depósito para calcular os limites.`;return;}
     const net=Math.round((d.dias.filter(i=>i.corretora===broker.value&&i.data===date.value&&i.id!==edit?.id).reduce((s,i)=>s+i.resultadoFinanceiro,0)+(Number(result.value)||0))*100)/100;
-    panel.textContent=`Saldo de abertura: ${money(base)} · Stop Loss: ${money(l.lossUSD)} · Stop Win: ${money(l.winUSD)} · Resultado (prévia): ${money(net)}. `+
-      (net<=-l.lossUSD?'STOP LOSS ATINGIDO: encerre a sessão.':net>=l.winUSD?'STOP WIN ATINGIDO: encerre a sessão.':`Margem até a perda diária: ${money(Math.max(0,l.lossUSD+net))}; falta para o Stop Win: ${money(Math.max(0,l.winUSD-net))}.`);
+    panel.textContent=`Saldo líquido de abertura: ${money(base)} · Base dos stops: ${money(l.saldoBase)} · Stop Loss: ${money(l.lossUSD)} · Stop Win: ${money(l.winUSD)} · Resultado (prévia): ${money(net)}. `+
+      (net<=-l.lossUSD?'STOP LOSS ATINGIDO: encerre a sessão.':net>=l.winUSD?'STOP WIN ATINGIDO: encerre a sessão.':`Margem até a perda diária: ${money(Math.max(0,l.lossUSD+net))}; falta para o Stop Win: ${money(Math.max(0,l.winUSD-net))}.`)+` ${breakdown}${warning}`;
   };
   for(const el of [broker,date,result])el.addEventListener('input',update);update();
   c.append(node('p','A margem é a distância ao limite líquido diário, não um risco recomendado por operação. O sistema não acompanha posições abertas nem bloqueia ordens na corretora.'));
@@ -239,7 +241,7 @@ function settingsView(){
 }
 function stopsView(){
   const c=card('Configuração geral de Stop Loss e Stop Win'),f=node('form','','grid');c.append(f);
-  const s=vault!.diary.stops,unit=select('Unidade',[['percentual','% do saldo de abertura'],['usd','US$ fixos']],f);unit.value=s?.unidade||'percentual';
+  const s=vault!.diary.stops,unit=select('Unidade',[['percentual','% da base dos stops (sem descontar saques)'],['usd','US$ fixos']],f);unit.value=s?.unidade||'percentual';
   const loss=input('Stop Loss diário','number',String(s?.loss??''),f),win=input('Stop Win diário','number',String(s?.win??''),f);for(const i of [loss,win]){i.min='.01';i.step='.01';}
   submit('Salvar configuração geral',f,()=>change(d=>{const stops={unidade:unit.value as 'percentual'|'usd',loss:Number(loss.value),win:Number(win.value),configuradoEm:new Date().toISOString()};validateStops(stops);d.stops=stops;}));
   c.append(node('p','Aplicada a todas as corretoras e datas. Consultas antigas usam a regra atual e não comprovam quais limites existiam na época.'));
