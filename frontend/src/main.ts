@@ -157,13 +157,11 @@ function diaryView(edit?:TradeDay){
   const notes=textarea('Observações',edit?.observacao||'',f),context=textarea('Contexto e lições',edit?.contexto||'',f);
   const panel=node('p','','notice');c.append(panel);
   const update=()=>{
-    const d=vault!.diary,l=limits(d,broker.value,date.value),details=openingDetails(d,broker.value,date.value),base=details.balance;
-    const breakdown=`Saldo líquido: depósitos até ${date.value}: ${money(details.deposits)} − saques: ${money(details.withdrawals)} + resultados anteriores: ${money(details.previousResults)}. Os saques não reduzem a base dos stops.`;
-    const warning=details.laterDeposits?` Há ${details.laterDeposits} depósito(s) dessa corretora com data posterior; confira a data em Movimentações.`:'';
-    if(!l){panel.textContent=`Saldo de abertura: ${money(base)}. ${breakdown}${warning} Configure os stops gerais e registre um depósito para calcular os limites.`;return;}
+    const d=vault!.diary,l=limits(d,broker.value,date.value),details=openingDetails(d,broker.value,date.value),base=Math.round((details.deposits+details.previousResults)*100)/100;
+    if(!l){panel.textContent=`Saldo de abertura: ${money(base)}. Configure os stops gerais e registre um depósito para calcular os limites.`;return;}
     const net=Math.round((d.dias.filter(i=>i.corretora===broker.value&&i.data===date.value&&i.id!==edit?.id).reduce((s,i)=>s+i.resultadoFinanceiro,0)+(Number(result.value)||0))*100)/100;
-    panel.textContent=`Saldo líquido de abertura: ${money(base)} · Base dos stops: ${money(l.saldoBase)} · Stop Loss: ${money(l.lossUSD)} · Stop Win: ${money(l.winUSD)} · Resultado (prévia): ${money(net)}. `+
-      (net<=-l.lossUSD?'STOP LOSS ATINGIDO: encerre a sessão.':net>=l.winUSD?'STOP WIN ATINGIDO: encerre a sessão.':`Margem até a perda diária: ${money(Math.max(0,l.lossUSD+net))}; falta para o Stop Win: ${money(Math.max(0,l.winUSD-net))}.`)+` ${breakdown}${warning}`;
+    panel.textContent=`Saldo de abertura: ${money(l.saldoBase)} · Stop Loss: ${money(l.lossUSD)} · Stop Win: ${money(l.winUSD)} · Resultado (prévia): ${money(net)}. `+
+      (net<=-l.lossUSD?'STOP LOSS ATINGIDO: encerre a sessão.':net>=l.winUSD?'STOP WIN ATINGIDO: encerre a sessão.':`Margem até a perda diária: ${money(Math.max(0,l.lossUSD+net))}; falta para o Stop Win: ${money(Math.max(0,l.winUSD-net))}.`);
   };
   for(const el of [broker,date,result])el.addEventListener('input',update);update();
   c.append(node('p','A margem é a distância ao limite líquido diário, não um risco recomendado por operação. O sistema não acompanha posições abertas nem bloqueia ordens na corretora.'));
