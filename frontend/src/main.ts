@@ -333,8 +333,21 @@ function evolutionView(){
   const deposits=items.movimentos.filter(i=>i.tipo==='Deposito').reduce((s,i)=>s+i.valor,0),withdrawals=items.movimentos.filter(i=>i.tipo==='Saque').reduce((s,i)=>s+i.valor,0);
   summaryCards([['Total Depósitos',format(deposits)],['Total Saques',format(withdrawals)],['Saldo registrado',format(total),total]],c);
   c.append(node('p','Inclui depósitos, saques e resultados, sem posições abertas.'));
-  const canvas=node('canvas');canvas.width=900;canvas.height=300;canvas.setAttribute('aria-label',`Evolução do saldo ${tradingMode} em ${isOb?'BRL':'USD'}`);c.append(canvas);const ctx=canvas.getContext('2d');
-  if(ctx&&points.length){const min=Math.min(0,...points.map(i=>i.saldo)),max=Math.max(1,...points.map(i=>i.saldo));ctx.strokeStyle='#3498db';ctx.lineWidth=3;ctx.beginPath();points.forEach((p,i)=>{const x=25+i*850/Math.max(1,points.length-1),y=275-(p.saldo-min)*250/(max-min);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();}
+  const chart=node('div','','evolution-chart');c.append(chart);
+  if(!points.length)chart.append(node('p','Registre depósitos, saques ou resultados para visualizar a evolução.'));
+  else{
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 900 330');svg.setAttribute('role','img');svg.setAttribute('aria-label',`Evolução do saldo ${tradingMode} em ${isOb?'BRL':'USD'}, de ${points[0].data} a ${points[points.length-1].data}`);chart.append(svg);
+    const add=(tag:string,attrs:Record<string,string>,text?:string)=>{const el=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [key,value] of Object.entries(attrs))el.setAttribute(key,value);if(text!==undefined)el.textContent=text;svg.append(el);return el;};
+    const values=points.map(p=>p.saldo),minimum=Math.min(0,...values),maximum=Math.max(0,...values),span=Math.max(1,maximum-minimum),padding=span*.1,min=minimum-padding,max=maximum+padding;
+    const x=(i:number)=>80+i*790/Math.max(1,points.length-1),y=(value:number)=>275-(value-min)*225/(max-min);
+    for(let i=0;i<=4;i++){const value=min+(max-min)*i/4,yy=y(value);add('line',{x1:'80',x2:'870',y1:String(yy),y2:String(yy),class:'chart-grid'});add('text',{x:'70',y:String(yy+4),'text-anchor':'end',class:'chart-label'},format(value));}
+    add('line',{x1:'80',x2:'870',y1:String(y(0)),y2:String(y(0)),class:'chart-zero'});
+    const coordinates=points.map((p,i)=>`${x(i)},${y(p.saldo)}`).join(' ');
+    if(points.length>1)add('polyline',{points:coordinates,class:'chart-line'});
+    for(const [i,p] of points.entries()){const dot=add('circle',{cx:String(x(i)),cy:String(y(p.saldo)),r:points.length>30?'3':'5',class:'chart-point',tabindex:'0'});const title=document.createElementNS('http://www.w3.org/2000/svg','title');title.textContent=`${p.data}: ${format(p.saldo)}`;dot.append(title);}
+    const labels=[0,Math.floor((points.length-1)/2),points.length-1].filter((v,i,a)=>a.indexOf(v)===i);
+    for(const i of labels)add('text',{x:String(x(i)),y:'315','text-anchor':i===0?'start':i===points.length-1?'end':'middle',class:'chart-date'},new Date(`${points[i].data}T12:00:00`).toLocaleDateString('pt-BR'));
+  }
   table(['Data','Saldo'],points.map(i=>[i.data,format(i.saldo)]),c);
 }
 function backupView(){
