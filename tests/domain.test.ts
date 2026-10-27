@@ -11,13 +11,14 @@ it('explica o saldo de abertura usado pelos stops de Forex',()=>{
   d.movimentos[1].data='2026-10-27';
   expect(limits(d,'A','2026-10-27')).toMatchObject({saldoBase:103.05,lossUSD:5.15,winUSD:15.46});
 });
-it('um saque não reduz a base percentual dos stops de Forex',()=>{
+it('os stops usam o saldo atual após zerar a conta e fazer novo depósito',()=>{
   const d=emptyDiary();d.stops={unidade:'percentual',loss:5,win:15,configuradoEm:'2026-10-01'};
   d.movimentos=[
-    {id:'deposito',corretora:'A',data:'2026-10-27',tipo:'Deposito',valor:101.50},
-    {id:'saque',corretora:'A',data:'2026-10-27',tipo:'Saque',valor:100}
+    {id:'anterior',corretora:'A',data:'2026-10-25',tipo:'Deposito',valor:100},
+    {id:'saque',corretora:'A',data:'2026-10-26',tipo:'Saque',valor:100},
+    {id:'atual',corretora:'A',data:'2026-10-27',tipo:'Deposito',valor:101.50}
   ];
-  expect(opening(d,'A','2026-10-27')).toBe(1.5);
+  expect(opening(d,'A','2026-10-27')).toBe(101.5);
   expect(limits(d,'A','2026-10-27')).toMatchObject({saldoBase:101.5,lossUSD:5.08,winUSD:15.23});
 });
 import { isPublicSupabaseKey } from '../shared/public-config';

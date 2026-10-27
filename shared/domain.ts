@@ -53,8 +53,7 @@ export function binaryOptionsLimits(d: Diary, broker: string, day: string) {
   return {saldoBase,lossBRL:round(saldoBase*stops.loss/100),winBRL:round(saldoBase*stops.win/100)};
 }
 export function limits(d: Diary, broker: string, day: string) {
-  const details = openingDetails(d, broker, day);
-  const saldoBase = round(details.deposits + details.previousResults);
+  const saldoBase = opening(d, broker, day);
   if (!d.stops || saldoBase <= 0) return null;
   const { unidade, loss, win } = d.stops;
   return { saldoBase, lossUSD: round(unidade === 'percentual' ? saldoBase * loss / 100 : loss), winUSD: round(unidade === 'percentual' ? saldoBase * win / 100 : win) };
