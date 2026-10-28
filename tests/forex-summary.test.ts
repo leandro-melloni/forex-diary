@@ -43,8 +43,10 @@ it('mostra percentuais zero sem lançamentos e indefinidos com várias corretora
   const d=diary();
   expect(forexSummary(d,[])).toMatchObject({diasLancados:0,taxaAcerto:0,percentualAcumulado:0,percentualMedio:0});
   const mixed=[...d.dias,day('5','2026-10-03',10,'B')];
-  expect(forexSummary({...d,dias:mixed},mixed)).toMatchObject({variasCorretoras:true,percentualAcumulado:null,percentualMedio:null});
-  expect(forexSummary({...d,movimentos:[]},d.dias)).toMatchObject({percentualAcumulado:null,percentualMedio:null});
+  const mixedSummary=forexSummary({...d,dias:mixed},mixed);
+  expect(mixedSummary).toMatchObject({variasCorretoras:true,percentualAcumulado:null});
+  expect(mixedSummary.percentualMedio).toBeCloseTo((5+0+150/1350*100)/3);
+  expect(forexSummary({...d,movimentos:[]},d.dias)).toMatchObject({percentualAcumulado:null,percentualMedio:150});
 });
 it('calcula a média diária entre corretoras usando o saldo de cada uma',()=>{
   const d=diary();
@@ -53,6 +55,13 @@ it('calcula a média diária entre corretoras usando o saldo de cada uma',()=>{
   const summary=forexSummary(d,d.dias);
   expect(summary.percentualAcumulado).toBeNull();
   expect(summary.percentualMedio).toBeCloseTo((5+0+150/1350*100+10)/4);
+});
+it('mantém a média dos dias com saldo de abertura válido',()=>{
+  const d=diary();
+  d.dias.push(day('5','2026-10-04',-1600));
+  d.dias.push(day('6','2026-10-05',20));
+  const summary=forexSummary(d,d.dias);
+  expect(summary.percentualMedio).toBeCloseTo((5+0+150/1350*100-1600/1500*100)/4);
 });
 it('mantém ordem de criação para UUIDs no mesmo dia e usa o histórico oculto pelo filtro',()=>{
   const d=diary();d.dias=[day('uuid-z','2026-10-01',100),day('uuid-a','2026-10-01',-50)];

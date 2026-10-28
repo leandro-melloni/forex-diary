@@ -88,15 +88,16 @@ export function forexSummary(d: Diary, items: TradeDay[]) {
     if(!variasCorretoras)percentualAcumulado=capital>0?resultado/capital*100:null;
     const days=new Map<string,number>();
     for(const i of items){const key=JSON.stringify([i.corretora,i.data]);days.set(key,(days.get(key)??0)+i.resultadoFinanceiro);}
-    let total=0;
+    let total=0,validDays=0;
     for(const [key,result] of days){
       const [broker,date]=JSON.parse(key) as [string,string];
       const firstOfDay=d.dias.filter(i=>i.corretora===broker&&i.data===date).sort(compare)[0];
       const balance=firstOfDay?before(firstOfDay):0;
-      if(balance<=0){percentualMedio=null;break;}
+      if(balance<=0)continue;
       total+=result/balance*100;
+      validDays++;
     }
-    if(percentualMedio!==null)percentualMedio=total/days.size;
+    percentualMedio=validDays?total/validDays:null;
   }
   return {diasLancados:items.length,diasWin:items.filter(i=>i.resultadoFinanceiro>0).length,
     diasLoss:items.filter(i=>i.resultadoFinanceiro<0).length,diasZero:items.filter(i=>i.resultadoFinanceiro===0).length,

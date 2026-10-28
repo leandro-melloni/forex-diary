@@ -178,7 +178,7 @@ function diaryView(edit?:TradeDay){
     const grid=summaryCards([
       ['Dias lançados',String(m.diasLancados)],['Dias com lucro',String(m.diasWin),0],['Dias com prejuízo',String(m.diasLoss),-1],['Dias no zero',String(m.diasZero)],['Total de operações',String(m.operacoes)],['Taxa de acerto',`${m.taxaAcerto.toFixed(1)}%`],['Resultado financeiro (USD)',money(m.resultado),m.resultado],
       [`Ganho/perda no filtro${hint}`,m.percentualAcumulado===null?'—':`${m.percentualAcumulado.toFixed(2)}%`,m.percentualAcumulado??0,'Resultado financeiro filtrado dividido pelo saldo antes do primeiro lançamento mais os depósitos até o último lançamento.'],
-      ['Média diária',m.percentualMedio===null?'—':`${m.percentualMedio.toFixed(2)}%`,m.percentualMedio??0,'Média aritmética das porcentagens diárias por corretora: resultado filtrado de cada dia dividido pelo saldo de abertura da corretora nesse dia. Considera apenas dias com lançamentos no filtro.']
+      ['Média diária',m.percentualMedio===null?'—':`${m.percentualMedio.toFixed(2)}%`,m.percentualMedio??0,'Média aritmética das porcentagens diárias por corretora: resultado filtrado de cada dia dividido pelo saldo de abertura da corretora nesse dia. Dias sem saldo de abertura positivo ficam fora da média.']
     ],summaryArea);grid.id='resumoForex';
     table(['Data','Corretora','Operações','Wins/Losses','Resultado','Observações','Ações'],selected.map(i=>{
       const actions=node('div','','actions');button('Editar',()=>{if(!busy){editingDay=i;render();}},actions);
