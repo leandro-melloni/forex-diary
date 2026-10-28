@@ -80,17 +80,18 @@ export function forexSummary(d: Diary, items: TradeDay[]) {
   const resultado=items.reduce((sum,i)=>sum+i.resultadoFinanceiro,0);
   const variasCorretoras=new Set(items.map(i=>i.corretora)).size>1;
   let percentualAcumulado:number|null=0,percentualMedio:number|null=0;
-  if(variasCorretoras){percentualAcumulado=null;percentualMedio=null;}
-  else if(items.length){
+  if(variasCorretoras)percentualAcumulado=null;
+  if(items.length){
     const sorted=[...items].sort(compare),first=sorted[0],last=sorted[sorted.length-1];
     const deposits=d.movimentos.filter(i=>i.corretora===first.corretora&&i.tipo==='Deposito'&&i.data>first.data&&i.data<=last.data).reduce((sum,i)=>sum+i.valor,0);
     const capital=before(first)+deposits;
-    percentualAcumulado=capital>0?resultado/capital*100:null;
+    if(!variasCorretoras)percentualAcumulado=capital>0?resultado/capital*100:null;
     const days=new Map<string,number>();
-    for(const i of items)days.set(i.data,(days.get(i.data)??0)+i.resultadoFinanceiro);
+    for(const i of items){const key=JSON.stringify([i.corretora,i.data]);days.set(key,(days.get(key)??0)+i.resultadoFinanceiro);}
     let total=0;
-    for(const [date,result] of days){
-      const firstOfDay=d.dias.filter(i=>i.corretora===first.corretora&&i.data===date).sort(compare)[0];
+    for(const [key,result] of days){
+      const [broker,date]=JSON.parse(key) as [string,string];
+      const firstOfDay=d.dias.filter(i=>i.corretora===broker&&i.data===date).sort(compare)[0];
       const balance=firstOfDay?before(firstOfDay):0;
       if(balance<=0){percentualMedio=null;break;}
       total+=result/balance*100;

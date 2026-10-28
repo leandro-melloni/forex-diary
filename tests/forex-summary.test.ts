@@ -46,6 +46,14 @@ it('mostra percentuais zero sem lançamentos e indefinidos com várias corretora
   expect(forexSummary({...d,dias:mixed},mixed)).toMatchObject({variasCorretoras:true,percentualAcumulado:null,percentualMedio:null});
   expect(forexSummary({...d,movimentos:[]},d.dias)).toMatchObject({percentualAcumulado:null,percentualMedio:null});
 });
+it('calcula a média diária entre corretoras usando o saldo de cada uma',()=>{
+  const d=diary();
+  d.movimentos.push({id:'deposit-b',corretora:'B',data:'2026-10-01',tipo:'Deposito',valor:200});
+  d.dias.push(day('5','2026-10-01',20,'B'));
+  const summary=forexSummary(d,d.dias);
+  expect(summary.percentualAcumulado).toBeNull();
+  expect(summary.percentualMedio).toBeCloseTo((5+0+150/1350*100+10)/4);
+});
 it('mantém ordem de criação para UUIDs no mesmo dia e usa o histórico oculto pelo filtro',()=>{
   const d=diary();d.dias=[day('uuid-z','2026-10-01',100),day('uuid-a','2026-10-01',-50)];
   const summary=forexSummary(d,[d.dias[1]]);
