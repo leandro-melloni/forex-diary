@@ -86,18 +86,20 @@ export function forexSummary(d: Diary, items: TradeDay[]) {
     const deposits=d.movimentos.filter(i=>i.corretora===first.corretora&&i.tipo==='Deposito'&&i.data>first.data&&i.data<=last.data).reduce((sum,i)=>sum+i.valor,0);
     const capital=before(first)+deposits;
     if(!variasCorretoras)percentualAcumulado=capital>0?resultado/capital*100:null;
-    const days=new Map<string,number>();
-    for(const i of items){const key=JSON.stringify([i.corretora,i.data]);days.set(key,(days.get(key)??0)+i.resultadoFinanceiro);}
-    let total=0,validDays=0;
-    for(const [key,result] of days){
-      const [broker,date]=JSON.parse(key) as [string,string];
-      const firstOfDay=d.dias.filter(i=>i.corretora===broker&&i.data===date).sort(compare)[0];
-      const balance=firstOfDay?before(firstOfDay):0;
-      if(balance<=0)continue;
-      total+=result/balance*100;
-      validDays++;
+    const byBroker=new Map<string,TradeDay[]>();
+    for(const item of items)byBroker.set(item.corretora,[...(byBroker.get(item.corretora)??[]),item]);
+    let dailyTotal=0,dayCount=0;
+    for(const brokerItems of byBroker.values()){
+      const chronological=[...brokerItems].sort(compare);
+      const start=chronological[0],end=chronological[chronological.length-1];
+      const newDeposits=d.movimentos.filter(i=>i.corretora===start.corretora&&i.tipo==='Deposito'&&i.data>start.data&&i.data<=end.data).reduce((sum,i)=>sum+i.valor,0);
+      const base=before(start)+newDeposits;
+      const days=new Set(brokerItems.map(i=>i.data)).size;
+      if(base<=0){percentualMedio=null;break;}
+      dailyTotal+=brokerItems.reduce((sum,i)=>sum+i.resultadoFinanceiro,0)/base*100;
+      dayCount+=days;
     }
-    percentualMedio=validDays?total/validDays:null;
+    if(percentualMedio!==null)percentualMedio=dailyTotal/dayCount;
   }
   return {diasLancados:items.length,diasWin:items.filter(i=>i.resultadoFinanceiro>0).length,
     diasLoss:items.filter(i=>i.resultadoFinanceiro<0).length,diasZero:items.filter(i=>i.resultadoFinanceiro===0).length,
